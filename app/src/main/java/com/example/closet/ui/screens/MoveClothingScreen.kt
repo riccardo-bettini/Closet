@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -155,20 +156,13 @@ fun MoveClothingScreen(
             ) {
                 Spacer(modifier = Modifier.width(52.dp))
 
-                Column {
-                    Text(
-                        text = if (isLaundryMode) "Panni" else "Spostamento",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = colors.textPrimary,
-                        letterSpacing = 0.5.sp
-                    )
-                    Text(
-                        text = if (isLaundryMode) "Trasferimento con opzioni personalizzate e transito" else "Sposta capi tra armadi mantenendo le cartelle",
-                        fontSize = 12.sp,
-                        color = colors.textSecondary
-                    )
-                }
+                Text(
+                    text = if (isLaundryMode) "Panni" else "Spostamento",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = colors.textPrimary,
+                    letterSpacing = 0.5.sp
+                )
             }
 
             Box(
@@ -210,8 +204,7 @@ fun MoveClothingScreen(
                                     fontWeight = FontWeight.Bold,
                                     color = colors.textPrimary,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
+                                    modifier = Modifier.weight(1f, fill = false).basicMarquee()
                                 )
                                 Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
                             }
@@ -281,8 +274,7 @@ fun MoveClothingScreen(
                                     fontWeight = FontWeight.Bold,
                                     color = screenAccent,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
+                                    modifier = Modifier.weight(1f, fill = false).basicMarquee()
                                 )
                                 Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = screenAccent, modifier = Modifier.size(16.dp))
                             }
@@ -1224,7 +1216,7 @@ fun SuitcaseClothingGridCard(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else if (!item.emoji.isNullOrBlank()) {
-                    Text(item.emoji, fontSize = 42.sp)
+                    Text(normalizeEmoji(item.emoji) ?: item.emoji.orEmpty(), fontSize = 42.sp)
                 } else {
                     Icon(Icons.Default.Checkroom, contentDescription = null, tint = itemAccentColor, modifier = Modifier.size(38.dp))
                 }
@@ -1305,7 +1297,7 @@ fun SuitcaseClothingGridCard(
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    modifier = Modifier.basicMarquee()
                 )
                 Text(
                     text = if (item.tags.isNotEmpty()) item.tags.joinToString(" • ") { "#$it" } else "Nessun tag",
@@ -1388,7 +1380,7 @@ fun SuitcaseClothingListCard(
                             modifier = Modifier.fillMaxSize()
                         )
                     } else if (!item.emoji.isNullOrBlank()) {
-                        Text(item.emoji, fontSize = 28.sp)
+                        Text(normalizeEmoji(item.emoji) ?: item.emoji.orEmpty(), fontSize = 28.sp)
                     } else {
                         Icon(Icons.Default.Checkroom, contentDescription = null, tint = itemAccentColor, modifier = Modifier.size(26.dp))
                     }
@@ -1401,7 +1393,7 @@ fun SuitcaseClothingListCard(
                         fontWeight = FontWeight.Bold,
                         color = colors.textPrimary,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        modifier = Modifier.basicMarquee()
                     )
                     Text(
                         text = subtitle,

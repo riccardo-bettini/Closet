@@ -65,20 +65,13 @@ fun TransfersActivityScreen(
             ) {
                 Spacer(modifier = Modifier.width(52.dp))
 
-                Column {
-                    Text(
-                        text = "Trasferimenti",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = colors.textPrimary,
-                        letterSpacing = 0.5.sp
-                    )
-                    Text(
-                        text = "Trasferimenti attivi e cronologia",
-                        fontSize = 12.sp,
-                        color = colors.textSecondary
-                    )
-                }
+                Text(
+                    text = "Trasferimenti",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = colors.textPrimary,
+                    letterSpacing = 0.5.sp
+                )
             }
 
             LazyColumn(

@@ -23,6 +23,7 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -159,20 +160,13 @@ fun ClosetPhotosScreen(
             ) {
                 Spacer(modifier = Modifier.width(52.dp))
 
-                Column {
-                    Text(
-                        text = "Foto armadio",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = colors.textPrimary,
-                        letterSpacing = 0.5.sp
-                    )
-                    Text(
-                        text = "1 panoramica fotografica per armadio",
-                        fontSize = 12.sp,
-                        color = colors.textSecondary
-                    )
-                }
+                Text(
+                    text = "Foto armadio",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = colors.textPrimary,
+                    letterSpacing = 0.5.sp
+                )
             }
 
             LazyVerticalGrid(
@@ -409,7 +403,7 @@ fun ClosetPhotoGridCard(
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    modifier = Modifier.basicMarquee()
                 )
                 Text(
                     text = if (photoUri != null) "Tocca per visualizzare" else "Nessuna foto",

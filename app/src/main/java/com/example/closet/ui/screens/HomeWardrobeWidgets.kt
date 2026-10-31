@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -153,7 +154,7 @@ fun CalendarTodayWidget2x1(viewModel: ClosetViewModel? = null) {
                     fontSize = 11.sp,
                     color = if (todayEvents.isEmpty()) colors.textSecondary else colors.accent,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    modifier = Modifier.basicMarquee()
                 )
             }
         }
@@ -261,7 +262,7 @@ fun CalendarTodayWidget2x2(viewModel: ClosetViewModel? = null) {
                                 fontWeight = FontWeight.SemiBold,
                                 color = colors.textPrimary,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                modifier = Modifier.basicMarquee()
                             )
                         }
                     }
@@ -467,7 +468,7 @@ fun CalendarAgendaWidget4x2(viewModel: ClosetViewModel? = null) {
                                     fontWeight = FontWeight.SemiBold,
                                     color = colors.textPrimary,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    modifier = Modifier.basicMarquee()
                                 )
                             }
                         }
@@ -631,7 +632,7 @@ fun WardrobeCountWidget1x2(viewModel: ClosetViewModel, targetCloset: String?) {
                 fontSize = 11.sp,
                 color = colors.textSecondary,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                modifier = Modifier.basicMarquee()
             )
         }
     }
@@ -703,7 +704,7 @@ fun WardrobeCountWidget2x2(viewModel: ClosetViewModel, targetCloset: String?) {
                 fontWeight = FontWeight.SemiBold,
                 color = colors.textSecondary,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                modifier = Modifier.basicMarquee()
             )
         }
     }
@@ -901,7 +902,7 @@ fun WardrobeListWidget2x2(viewModel: ClosetViewModel, targetCloset: String?) {
                 fontWeight = FontWeight.ExtraBold,
                 color = colors.accent,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                modifier = Modifier.basicMarquee()
             )
             Icon(
                 imageVector = Icons.Outlined.Checkroom,
@@ -962,8 +963,7 @@ fun WardrobeListWidget2x2(viewModel: ClosetViewModel, targetCloset: String?) {
                             fontWeight = FontWeight.SemiBold,
                             color = colors.textPrimary,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f).basicMarquee()
                         )
                     }
                 }
@@ -1082,8 +1082,7 @@ fun WardrobeListWidget2x4(viewModel: ClosetViewModel, targetCloset: String?) {
                                 fontWeight = FontWeight.SemiBold,
                                 color = colors.textPrimary,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 4.dp)
+                                modifier = Modifier.padding(top = 4.dp).basicMarquee()
                             )
                         }
                     }

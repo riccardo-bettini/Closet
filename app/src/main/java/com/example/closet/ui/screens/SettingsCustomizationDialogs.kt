@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -209,19 +210,12 @@ fun IslandTabsEditorDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column {
-                            Text(
-                                text = "Gestione delle schede",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = colors.textPrimary
-                            )
-                            Text(
-                                text = "Le schede fuori dall'isola compaiono in Funzioni",
-                                fontSize = 11.5.sp,
-                                color = colors.textSecondary
-                            )
-                        }
+                        Text(
+                            text = "Gestione delle schede",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = colors.textPrimary
+                        )
 
                         Surface(
                             shape = CircleShape,
@@ -595,35 +589,42 @@ fun IslandTabsEditorDialog(
                                             verticalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             Box(
-                                                modifier = Modifier
-                                                    .size(46.dp)
-                                                    .clip(CircleShape)
-                                                    .background(
-                                                        visual.distinctColor.copy(
-                                                            alpha = if (isAlreadyInIsland) 0.08f else if (colors.isDark) 0.22f else 0.14f
-                                                        )
-                                                    )
-                                                    .border(
-                                                        width = 1.dp,
-                                                        color = if (isAlreadyInIsland) colors.cardBorder else visual.distinctColor.copy(alpha = 0.45f),
-                                                        shape = CircleShape
-                                                    ),
+                                                modifier = Modifier.size(46.dp),
                                                 contentAlignment = Alignment.Center
                                             ) {
-                                                Icon(
-                                                    imageVector = visual.icon,
-                                                    contentDescription = tabOption.label,
-                                                    tint = if (isAlreadyInIsland) colors.textMuted else visual.distinctColor,
-                                                    modifier = Modifier.size(21.dp)
-                                                )
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .clip(CircleShape)
+                                                        .background(
+                                                            visual.distinctColor.copy(
+                                                                alpha = if (isAlreadyInIsland) 0.08f else if (colors.isDark) 0.22f else 0.14f
+                                                            )
+                                                        )
+                                                        .border(
+                                                            width = 1.dp,
+                                                            color = if (isAlreadyInIsland) colors.cardBorder else visual.distinctColor.copy(alpha = 0.45f),
+                                                            shape = CircleShape
+                                                        ),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = visual.icon,
+                                                        contentDescription = tabOption.label,
+                                                        tint = if (isAlreadyInIsland) colors.textMuted else visual.distinctColor,
+                                                        modifier = Modifier.size(21.dp)
+                                                    )
+                                                }
 
                                                 if (isAlreadyInIsland) {
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.BottomEnd)
-                                                            .size(15.dp)
+                                                            .offset(x = 1.dp, y = 1.dp)
+                                                            .size(16.dp)
                                                             .clip(CircleShape)
-                                                            .background(colors.accent),
+                                                            .background(colors.accent)
+                                                            .border(1.5.dp, colors.dialogBackground, CircleShape),
                                                         contentAlignment = Alignment.Center
                                                     ) {
                                                         Icon(
@@ -642,8 +643,8 @@ fun IslandTabsEditorDialog(
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = if (isAlreadyInIsland) colors.textMuted else colors.textPrimary,
                                                 maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                textAlign = TextAlign.Center
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.basicMarquee()
                                             )
                                         }
                                     } else {
@@ -762,7 +763,7 @@ fun FavoriteShortcutsEditorDialog(
     val cellStepPx = cellSizePx + cellSpacingPx
 
     val maxOccupiedRow = workingShortcuts.maxOfOrNull { it.row } ?: -1
-    val previewRowsCount = maxOf(2, maxOccupiedRow + 2).coerceAtMost(4)
+    val previewRowsCount = maxOf(2, maxOccupiedRow + 1).coerceAtMost(4)
 
     var draggedPlacedId by remember { mutableStateOf<String?>(null) }
     var dragStartRow by remember { mutableIntStateOf(0) }
@@ -850,6 +851,24 @@ fun FavoriteShortcutsEditorDialog(
 
     fun addShortcutToFirstFreeSlot(action: FavoriteActionType) {
         if (workingShortcuts.any { it.action == action }) return
+        val occupiedRows = workingShortcuts.map { it.row }.distinct().sorted()
+        for (r in occupiedRows) {
+            for (c in 0..3) {
+                if (workingShortcuts.none { it.row == r && it.col == c }) {
+                    workingShortcuts.add(
+                        PlacedFavoriteShortcut(
+                            action = action,
+                            row = r,
+                            col = c
+                        )
+                    )
+                    val compacted = compactFavoriteRows(workingShortcuts)
+                    workingShortcuts.clear()
+                    workingShortcuts.addAll(compacted)
+                    return
+                }
+            }
+        }
         for (r in 0..3) {
             for (c in 0..3) {
                 if (workingShortcuts.none { it.row == r && it.col == c }) {
@@ -1291,35 +1310,42 @@ fun FavoriteShortcutsEditorDialog(
                                             verticalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             Box(
-                                                modifier = Modifier
-                                                    .size(46.dp)
-                                                    .clip(CircleShape)
-                                                    .background(
-                                                        visual.distinctColor.copy(
-                                                            alpha = if (isAlreadyAdded) 0.08f else if (colors.isDark) 0.22f else 0.14f
-                                                        )
-                                                    )
-                                                    .border(
-                                                        width = 1.dp,
-                                                        color = if (isAlreadyAdded) colors.cardBorder else visual.distinctColor.copy(alpha = 0.45f),
-                                                        shape = CircleShape
-                                                    ),
+                                                modifier = Modifier.size(46.dp),
                                                 contentAlignment = Alignment.Center
                                             ) {
-                                                Icon(
-                                                    imageVector = visual.icon,
-                                                    contentDescription = action.label,
-                                                    tint = if (isAlreadyAdded) colors.textMuted else visual.distinctColor,
-                                                    modifier = Modifier.size(21.dp)
-                                                )
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .clip(CircleShape)
+                                                        .background(
+                                                            visual.distinctColor.copy(
+                                                                alpha = if (isAlreadyAdded) 0.08f else if (colors.isDark) 0.22f else 0.14f
+                                                            )
+                                                        )
+                                                        .border(
+                                                            width = 1.dp,
+                                                            color = if (isAlreadyAdded) colors.cardBorder else visual.distinctColor.copy(alpha = 0.45f),
+                                                            shape = CircleShape
+                                                        ),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = visual.icon,
+                                                        contentDescription = action.label,
+                                                        tint = if (isAlreadyAdded) colors.textMuted else visual.distinctColor,
+                                                        modifier = Modifier.size(21.dp)
+                                                    )
+                                                }
 
                                                 if (isAlreadyAdded) {
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.BottomEnd)
-                                                            .size(15.dp)
+                                                            .offset(x = 1.dp, y = 1.dp)
+                                                            .size(16.dp)
                                                             .clip(CircleShape)
-                                                            .background(colors.accent),
+                                                            .background(colors.accent)
+                                                            .border(1.5.dp, colors.dialogBackground, CircleShape),
                                                         contentAlignment = Alignment.Center
                                                     ) {
                                                         Icon(
@@ -1338,8 +1364,8 @@ fun FavoriteShortcutsEditorDialog(
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = if (isAlreadyAdded) colors.textMuted else colors.textPrimary,
                                                 maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                textAlign = TextAlign.Center
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.basicMarquee()
                                             )
                                         }
                                     } else {

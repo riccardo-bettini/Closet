@@ -7,6 +7,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -179,7 +180,7 @@ fun WidgetPickerDialog(
     }
 
     val topFadeColor = colors.dialogBackground
-    val bottomFadeColor = colors.fadeColorBottom
+    val bottomFadeColor = colors.dialogBackground
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -320,7 +321,9 @@ fun WidgetPickerDialog(
                                                                 text = cat.title,
                                                                 fontSize = 15.sp,
                                                                 fontWeight = FontWeight.Bold,
-                                                                color = colors.textPrimary
+                                                                color = colors.textPrimary,
+                                                                maxLines = 1,
+                                                                modifier = Modifier.basicMarquee()
                                                             )
                                                             Text(
                                                                 text = "${cat.widgets.size} widget disponibili",
@@ -538,7 +541,7 @@ private fun OneUIWidgetCard(
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    modifier = Modifier.basicMarquee()
                 )
 
                 Row(

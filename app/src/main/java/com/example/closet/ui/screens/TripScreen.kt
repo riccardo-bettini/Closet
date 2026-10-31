@@ -125,11 +125,13 @@ fun TripScreen(
                         color = colors.textPrimary,
                         letterSpacing = 0.5.sp
                     )
-                    Text(
-                        text = if (activeTrip != null) "Viaggio in corso: ${activeTrip.name}" else "Prepara la valigia attingendo da qualsiasi armadio",
-                        fontSize = 12.sp,
-                        color = colors.textSecondary
-                    )
+                    if (activeTrip != null) {
+                        Text(
+                            text = "Viaggio in corso: ${activeTrip.name}",
+                            fontSize = 12.sp,
+                            color = colors.accent
+                        )
+                    }
                 }
             }
 
@@ -254,7 +256,7 @@ fun TripScreen(
                                                 modifier = Modifier.fillMaxSize()
                                             )
                                         } else if (!tripItem.emoji.isNullOrBlank()) {
-                                            Text(tripItem.emoji, fontSize = 22.sp)
+                                            Text(normalizeEmoji(tripItem.emoji) ?: tripItem.emoji.orEmpty(), fontSize = 22.sp)
                                         } else {
                                             Icon(Icons.Default.Checkroom, contentDescription = null, tint = tripAccent, modifier = Modifier.size(20.dp))
                                         }

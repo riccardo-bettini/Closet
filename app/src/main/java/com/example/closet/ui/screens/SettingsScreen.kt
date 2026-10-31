@@ -121,7 +121,7 @@ fun normalizeIslandTabs(tabs: List<IslandTabType>): List<IslandTabType> {
 }
 
 // =========================================================================
-// MODELLI DATI PER LE FUNZIONI PREFERITE (TASTO STELLA â˜…)
+// MODELLI DATI PER LE FUNZIONI PREFERITE (TASTO STELLA ★)
 // =========================================================================
 
 enum class FavoriteActionType(
@@ -1178,10 +1178,11 @@ fun compactFavoriteRows(
 ): List<PlacedFavoriteShortcut> {
     if (items.isEmpty()) return emptyList()
     val distinctSortedRows = items.map { it.row }.distinct().sorted()
-    val rowMap = distinctSortedRows.withIndex().associate { (newIdx, oldRow) -> oldRow to newIdx }
+    val topOffset = if (distinctSortedRows.size < 4) 1 else 0
+    val rowMap = distinctSortedRows.withIndex().associate { (newIdx, oldRow) -> oldRow to (newIdx + topOffset) }
     return items.map { item ->
         item.copy(
-            row = rowMap[item.row] ?: 0,
+            row = rowMap[item.row] ?: topOffset,
             col = item.col.coerceIn(0, 3)
         )
     }.sortedWith(compareBy({ it.row }, { it.col }))

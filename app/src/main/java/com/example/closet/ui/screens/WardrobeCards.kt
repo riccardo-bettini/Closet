@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -105,7 +106,7 @@ fun ClothingGridCard(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else if (!item.emoji.isNullOrBlank()) {
-                    Text(item.emoji, fontSize = 42.sp)
+                    Text(normalizeEmoji(item.emoji) ?: item.emoji.orEmpty(), fontSize = 42.sp)
                 } else {
                     Icon(Icons.Default.Checkroom, contentDescription = null, tint = colors.accent, modifier = Modifier.size(40.dp))
                 }
@@ -148,7 +149,7 @@ fun ClothingGridCard(
                     }
                 }
 
-                // Pallino contatore in alto a destra durante la modalità gestione elementi
+                // Pallino contatore in alto a destra durante la modalità gestione elementi: diventa selettore quantità se l'elemento è selezionato
                 androidx.compose.animation.AnimatedVisibility(
                     visible = isEditMode && item.isCountable && !item.isLaundryInTransit,
                     enter = fadeIn(tween(220)) + scaleIn(
@@ -160,25 +161,89 @@ fun ClothingGridCard(
                         .align(Alignment.TopEnd)
                         .padding(8.dp)
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.Black.copy(alpha = 0.72f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)),
-                        modifier = Modifier
-                            .height(24.dp)
-                            .widthIn(min = 24.dp)
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.padding(horizontal = 6.dp)
-                        ) {
-                            Text(
-                                text = "${item.quantity}",
-                                color = colors.accent,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                textAlign = TextAlign.Center
-                            )
+                    AnimatedContent(
+                        targetState = isSelected,
+                        transitionSpec = {
+                            (fadeIn(tween(180)) + scaleIn(initialScale = 0.85f))
+                                .togetherWith(fadeOut(tween(130)) + scaleOut(targetScale = 0.85f))
+                        },
+                        label = "counterTopEndMorph"
+                    ) { selected ->
+                        if (selected) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Black.copy(alpha = 0.85f),
+                                border = BorderStroke(1.2.dp, colors.accent),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .background(if (selectedQuantity > 1) colors.accent.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.1f))
+                                            .clickable(enabled = selectedQuantity > 1) { onDecrementSelected() },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "-",
+                                            color = if (selectedQuantity > 1) Color.White else Color.White.copy(alpha = 0.35f),
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                    Text(
+                                        text = if (selectedQuantity < item.quantity) "$selectedQuantity/${item.quantity}" else "$selectedQuantity",
+                                        color = colors.accent,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .background(if (selectedQuantity < item.quantity) colors.accent.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.1f))
+                                            .clickable(enabled = selectedQuantity < item.quantity) { onIncrementSelected() },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "+",
+                                            color = if (selectedQuantity < item.quantity) Color.White else Color.White.copy(alpha = 0.35f),
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Black.copy(alpha = 0.72f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)),
+                                modifier = Modifier
+                                    .height(24.dp)
+                                    .widthIn(min = 24.dp)
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(horizontal = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "${item.quantity}",
+                                        color = colors.accent,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -235,57 +300,18 @@ fun ClothingGridCard(
                         .align(Alignment.BottomEnd)
                         .padding(8.dp)
                 ) {
-                    if (isSelected && item.isCountable) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.75f),
-                            border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.6f))
+                    Surface(
+                        shape = CircleShape,
+                        color = colors.accent,
+                        modifier = Modifier.clickable { onEditClick() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .clip(CircleShape)
-                                        .clickable { onDecrementSelected() },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("-", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                                }
-                                Text(
-                                    text = if (selectedQuantity < item.quantity) "$selectedQuantity/${item.quantity}" else "$selectedQuantity",
-                                    color = colors.accent,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .clip(CircleShape)
-                                        .clickable { onIncrementSelected() },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("+", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                                }
-                            }
-                        }
-                    } else {
-                        Surface(
-                            shape = CircleShape,
-                            color = colors.accent,
-                            modifier = Modifier.clickable { onEditClick() }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(Icons.Outlined.Edit, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
-                                Text("Modifica", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
+                            Icon(Icons.Outlined.Edit, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                            Text("Modifica", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -300,7 +326,7 @@ fun ClothingGridCard(
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    modifier = Modifier.basicMarquee()
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
@@ -308,7 +334,7 @@ fun ClothingGridCard(
                     fontSize = 11.sp,
                     color = if (item.isLaundryInTransit) colors.accent else colors.textSecondary,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    modifier = Modifier.basicMarquee()
                 )
             }
         }
@@ -400,23 +426,27 @@ fun ClothingListCard(
                 }
 
                 Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(colors.surfaceSecondary),
-                    contentAlignment = Alignment.Center
+                    modifier = Modifier.size(56.dp)
                 ) {
-                    if (item.imageUri != null) {
-                        Image(
-                            painter = rememberOptimizedPainter(item.imageUri, 112),
-                            contentDescription = item.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else if (!item.emoji.isNullOrBlank()) {
-                        Text(item.emoji, fontSize = 28.sp)
-                    } else {
-                        Icon(Icons.Default.Checkroom, contentDescription = null, tint = colors.accent, modifier = Modifier.size(26.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(colors.surfaceSecondary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (item.imageUri != null) {
+                            Image(
+                                painter = rememberOptimizedPainter(item.imageUri, 112),
+                                contentDescription = item.name,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else if (!item.emoji.isNullOrBlank()) {
+                            Text(normalizeEmoji(item.emoji) ?: item.emoji.orEmpty(), fontSize = 28.sp)
+                        } else {
+                            Icon(Icons.Default.Checkroom, contentDescription = null, tint = colors.accent, modifier = Modifier.size(26.dp))
+                        }
                     }
 
                     androidx.compose.animation.AnimatedVisibility(
@@ -428,24 +458,29 @@ fun ClothingListCard(
                         exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.7f),
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(2.dp)
+                            .offset(x = 2.dp, y = (-2).dp)
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.72f),
-                            border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.45f)),
+                            color = if (isSelected) colors.accent else Color.Black.copy(alpha = 0.82f),
+                            border = BorderStroke(1.2.dp, if (isSelected) Color.White else Color.White.copy(alpha = 0.65f)),
+                            shadowElevation = 3.dp,
                             modifier = Modifier
-                                .height(18.dp)
-                                .widthIn(min = 18.dp)
+                                .height(20.dp)
+                                .widthIn(min = 20.dp)
                         ) {
                             Box(
                                 contentAlignment = Alignment.Center,
-                                modifier = Modifier.padding(horizontal = 4.dp)
+                                modifier = Modifier.padding(horizontal = 5.dp)
                             ) {
                                 Text(
-                                    text = "${item.quantity}",
-                                    color = colors.accent,
-                                    fontSize = 10.sp,
+                                    text = if (isSelected) {
+                                        if (selectedQuantity < item.quantity) "$selectedQuantity/${item.quantity}" else "$selectedQuantity"
+                                    } else {
+                                        "${item.quantity}"
+                                    },
+                                    color = if (isSelected) Color.White else colors.accent,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     textAlign = TextAlign.Center
                                 )
@@ -461,14 +496,14 @@ fun ClothingListCard(
                         fontWeight = FontWeight.Bold,
                         color = colors.textPrimary,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        modifier = Modifier.basicMarquee()
                     )
                     Text(
                         text = subtitle,
                         fontSize = 12.sp,
                         color = if (item.isLaundryInTransit) colors.accent else colors.textSecondary,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        modifier = Modifier.basicMarquee()
                     )
                 }
             }
@@ -511,32 +546,37 @@ fun ClothingListCard(
                     ),
                     exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.75f)
                 ) {
-                    if (isSelected && item.isCountable) {
-                        Surface(
-                            shape = CircleShape,
-                            color = colors.surfaceSecondary,
-                            border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.5f))
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (isSelected && item.isCountable) {
+                            Surface(
+                                shape = CircleShape,
+                                color = colors.surfaceSecondary,
+                                border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.5f))
                             ) {
-                                IconButton(onClick = onDecrementSelected, modifier = Modifier.size(26.dp)) {
-                                    Text("-", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                                }
-                                Text(
-                                    text = if (selectedQuantity < item.quantity) "$selectedQuantity/${item.quantity}" else "$selectedQuantity",
-                                    color = colors.accent,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 4.dp)
-                                )
-                                IconButton(onClick = onIncrementSelected, modifier = Modifier.size(26.dp)) {
-                                    Text("+", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                ) {
+                                    IconButton(onClick = onDecrementSelected, modifier = Modifier.size(26.dp)) {
+                                        Text("-", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                                    }
+                                    Text(
+                                        text = if (selectedQuantity < item.quantity) "$selectedQuantity/${item.quantity}" else "$selectedQuantity",
+                                        color = colors.accent,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    )
+                                    IconButton(onClick = onIncrementSelected, modifier = Modifier.size(26.dp)) {
+                                        Text("+", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                                    }
                                 }
                             }
                         }
-                    } else {
+
                         Surface(
                             shape = CircleShape,
                             color = colors.accent,
@@ -604,7 +644,7 @@ fun FolderGridCard(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else if (!coverEmoji.isNullOrBlank()) {
-                    Text(coverEmoji, fontSize = 42.sp)
+                    Text(normalizeEmoji(coverEmoji) ?: coverEmoji.orEmpty(), fontSize = 42.sp)
                 } else {
                     Icon(Icons.Outlined.Folder, contentDescription = null, tint = colors.accent, modifier = Modifier.size(44.dp))
                 }
@@ -663,7 +703,7 @@ fun FolderGridCard(
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    modifier = Modifier.basicMarquee()
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
@@ -726,7 +766,7 @@ fun FolderListCard(
                             modifier = Modifier.fillMaxSize()
                         )
                     } else if (!coverEmoji.isNullOrBlank()) {
-                        Text(coverEmoji, fontSize = 28.sp)
+                        Text(normalizeEmoji(coverEmoji) ?: coverEmoji.orEmpty(), fontSize = 28.sp)
                     } else {
                         Icon(Icons.Outlined.Folder, contentDescription = null, tint = colors.accent, modifier = Modifier.size(26.dp))
                     }
@@ -739,7 +779,7 @@ fun FolderListCard(
                         fontWeight = FontWeight.Bold,
                         color = colors.textPrimary,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        modifier = Modifier.basicMarquee()
                     )
                     Text(
                         text = "$itemCount capi (Cartella)",

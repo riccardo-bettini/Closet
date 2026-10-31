@@ -7,6 +7,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -233,7 +234,7 @@ fun FunctionPhotoWidget2x2(
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    modifier = Modifier.basicMarquee()
                 )
                 Text(
                     text = "Panoramica",
@@ -270,7 +271,7 @@ fun FunctionPhotoWidget2x2(
                         fontWeight = FontWeight.Bold,
                         color = colors.textPrimary,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        modifier = Modifier.basicMarquee()
                     )
                     Text(
                         text = "Panoramica foto",
@@ -348,7 +349,7 @@ fun FunctionPhotoWidget2x4(
                     fontWeight = FontWeight.ExtraBold,
                     color = colors.textPrimary,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    modifier = Modifier.basicMarquee()
                 )
             }
 
@@ -1438,7 +1439,7 @@ fun UtilityCompassWidget2x4() {
                 color = colors.textSecondary
             )
             Text(
-                text = "Incl. ${reading.pitchDegrees.roundToInt()}Â° â€¢ Roll ${reading.rollDegrees.roundToInt()}Â°",
+                text = "Incl. ${reading.pitchDegrees.roundToInt()}° • Roll ${reading.rollDegrees.roundToInt()}°",
                 fontSize = 10.5.sp,
                 color = colors.textMuted
             )

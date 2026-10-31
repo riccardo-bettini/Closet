@@ -69,14 +69,19 @@ fun EmojiPickerDialog(
     onEmojiSelected: (String) -> Unit
 ) {
     val colors = LocalOneUIColors.current
-    val emojis = remember {
-        listOf(
-            "ðŸ‘•", "ðŸ‘”", "ðŸ‘—", "ðŸ§¥", "ðŸ©²", "ðŸ©³", "ðŸ‘–", "ðŸ‘š", "ðŸ¥¼", "ðŸ¥»", "ðŸ‘˜", "ðŸŽ½", "ðŸ¦º", "ðŸ¥‹", "ðŸ¤µ", "ðŸ‘°", "ðŸ‘™", "ðŸ©±",
-            "ðŸ‘Ÿ", "ðŸ‘ž", "ðŸ¥¾", "ðŸ‘¡", "ðŸ‘ ", "ðŸ‘¢", "ðŸ¥¿", "ðŸ©°", "ðŸ©´", "ðŸ§¦", "â›¸ï¸", "ðŸŽ¿",
-            "ðŸ§¢", "ðŸ‘’", "ðŸŽ©", "ðŸŽ“", "ðŸ‘‘", "â›‘ï¸", "ðŸª–", "ðŸ§£", "ðŸ§¤", "ðŸ•¶ï¸", "ðŸ‘“", "ðŸŒ‚", "â˜‚ï¸", "ðŸ‘œ", "ðŸŽ’", "ðŸ‘›", "ðŸ’¼", "ðŸ§³",
-            "ðŸ’", "ðŸ’Ž", "âŒš", "ðŸ•°ï¸", "ðŸª¡", "ðŸ§µ", "ðŸ§¶", "ðŸ§·", "ðŸ·ï¸", "ðŸŽ€",
-            "â˜€ï¸", "â„ï¸", "ðŸŒ§ï¸", "â›…", "ðŸŒŠ", "ðŸ‚", "ðŸŒ¸", "âš¡", "âœ¨", "ðŸ”¥", "â­", "ðŸ–¤", "ðŸ¤", "ðŸ§¸", "ðŸ’¯", "ðŸŽ¯", "ðŸš€", "ðŸ†"
-        )
+    var selectedCategoryIndex by remember { mutableIntStateOf(0) }
+    var customEmojiInput by remember { mutableStateOf("") }
+
+    val categoryTabs = remember {
+        listOf("Tutti") + wardrobeEmojiCategories.map { it.title }
+    }
+
+    val currentEmojis = remember(selectedCategoryIndex) {
+        if (selectedCategoryIndex == 0) {
+            allWardrobeEmojis
+        } else {
+            wardrobeEmojiCategories.getOrNull(selectedCategoryIndex - 1)?.emojis ?: allWardrobeEmojis
+        }
     }
 
     Dialog(
@@ -90,12 +95,14 @@ fun EmojiPickerDialog(
             tonalElevation = 8.dp,
             shadowElevation = 24.dp,
             modifier = Modifier
-                .fillMaxWidth(0.90f)
-                .padding(vertical = 24.dp)
+                .fillMaxWidth(0.92f)
+                .padding(vertical = 20.dp)
         ) {
             Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .padding(horizontal = 20.dp, vertical = 20.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -105,25 +112,134 @@ fun EmojiPickerDialog(
                     color = colors.textPrimary
                 )
 
+                // Categorie scorrevoli orizzontalmente in perfetto stile One UI
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    categoryTabs.forEachIndexed { index, tabTitle ->
+                        val isSelected = selectedCategoryIndex == index
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isSelected) colors.accent else colors.surfaceSecondary,
+                            border = if (!isSelected) BorderStroke(0.6.dp, colors.cardBorder) else null,
+                            modifier = Modifier
+                                .height(32.dp)
+                                .clickable { selectedCategoryIndex = index }
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 14.dp)
+                            ) {
+                                Text(
+                                    text = tabTitle,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color.White else colors.textPrimary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Inserimento o copia di un'emoji personalizzata dalla tastiera di sistema
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = colors.surfaceSecondary,
+                    border = BorderStroke(0.6.dp, colors.cardBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Edit,
+                            contentDescription = null,
+                            tint = colors.textSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (customEmojiInput.isEmpty()) {
+                                Text(
+                                    text = "Oppure incolla o digita un'emoji...",
+                                    color = colors.textSecondary,
+                                    fontSize = 13.sp
+                                )
+                            }
+                            BasicTextField(
+                                value = customEmojiInput,
+                                onValueChange = { customEmojiInput = it },
+                                textStyle = ComposeTextStyle(
+                                    fontSize = 14.sp,
+                                    color = colors.textPrimary,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                cursorBrush = SolidColor(colors.accent),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        if (customEmojiInput.isNotBlank()) {
+                            Surface(
+                                shape = CircleShape,
+                                color = colors.accent,
+                                modifier = Modifier
+                                    .clickable {
+                                        val clean = normalizeEmoji(customEmojiInput) ?: customEmojiInput.trim()
+                                        if (clean.isNotBlank()) {
+                                            onEmojiSelected(clean)
+                                            onDismiss()
+                                        }
+                                    }
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "Usa",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Griglia con tutte le icone ed emoji native perfettamente renderizzate
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(5),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.heightIn(max = 320.dp)
+                    modifier = Modifier.heightIn(max = 280.dp)
                 ) {
-                    items(emojis, key = { it }) { emoji ->
+                    items(currentEmojis, key = { it }) { emoji ->
                         Surface(
                             shape = RoundedCornerShape(14.dp),
                             color = colors.surfaceSecondary,
+                            border = BorderStroke(0.5.dp, colors.cardBorder),
                             modifier = Modifier
                                 .aspectRatio(1f)
                                 .clickable {
-                                    onEmojiSelected(emoji)
+                                    val clean = normalizeEmoji(emoji) ?: emoji
+                                    onEmojiSelected(clean)
                                     onDismiss()
                                 }
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Text(emoji, fontSize = 26.sp)
+                                Text(
+                                    text = emoji,
+                                    fontSize = 26.sp,
+                                    textAlign = TextAlign.Center
+                                )
                             }
                         }
                     }
@@ -139,8 +255,6 @@ fun EmojiPickerDialog(
         }
     }
 }
-
-
 // Dialog con Morphing per la Modifica della Cartella
 @Composable
 fun FolderEditDialog(
@@ -153,7 +267,7 @@ fun FolderEditDialog(
     val colors = LocalOneUIColors.current
     var name by remember { mutableStateOf(folder.folderName) }
     var coverUri by remember { mutableStateOf<Uri?>(folder.coverImageUri) }
-    var coverEmoji by remember { mutableStateOf(folder.coverEmoji ?: "") }
+    var coverEmoji by remember { mutableStateOf(normalizeEmoji(folder.coverEmoji) ?: "") }
     var showCustomCamera by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
 
@@ -204,7 +318,7 @@ fun FolderEditDialog(
         EmojiPickerDialog(
             onDismiss = { showEmojiPicker = false },
             onEmojiSelected = { selectedEmoji ->
-                coverEmoji = selectedEmoji
+                coverEmoji = normalizeEmoji(selectedEmoji) ?: selectedEmoji
                 coverUri = null
             }
         )
@@ -259,7 +373,7 @@ fun FolderEditDialog(
                         if (coverUri != null) {
                             Image(painter = rememberOptimizedPainter(coverUri, 172), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                         } else if (coverEmoji.isNotBlank()) {
-                            Text(coverEmoji, fontSize = 38.sp)
+                            Text(normalizeEmoji(coverEmoji) ?: coverEmoji, fontSize = 38.sp)
                         } else {
                             Icon(Icons.Outlined.Folder, contentDescription = null, tint = colors.accent, modifier = Modifier.size(36.dp))
                         }
@@ -387,7 +501,7 @@ fun FolderEditDialog(
                         onClick = {
                             val clean = name.trim()
                             if (clean.isNotBlank()) {
-                                onSave(folder.copy(folderName = clean, coverImageUri = coverUri, coverEmoji = coverEmoji.ifBlank { null }))
+                                onSave(folder.copy(folderName = clean, coverImageUri = coverUri, coverEmoji = normalizeEmoji(coverEmoji)))
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = colors.accent),
@@ -468,7 +582,7 @@ fun FolderCreateDialog(
         EmojiPickerDialog(
             onDismiss = { showEmojiPicker = false },
             onEmojiSelected = { selectedEmoji ->
-                coverEmoji = selectedEmoji
+                coverEmoji = normalizeEmoji(selectedEmoji) ?: selectedEmoji
                 coverUri = null
             }
         )
@@ -523,7 +637,7 @@ fun FolderCreateDialog(
                         if (coverUri != null) {
                             Image(painter = rememberOptimizedPainter(coverUri, 172), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                         } else if (coverEmoji.isNotBlank()) {
-                            Text(coverEmoji, fontSize = 38.sp)
+                            Text(normalizeEmoji(coverEmoji) ?: coverEmoji, fontSize = 38.sp)
                         } else {
                             Icon(Icons.Outlined.Folder, contentDescription = null, tint = colors.accent, modifier = Modifier.size(36.dp))
                         }
@@ -655,7 +769,7 @@ fun FolderCreateDialog(
                         onClick = {
                             val clean = name.trim()
                             if (clean.isNotBlank()) {
-                                onSave(clean, coverUri, coverEmoji.ifBlank { null })
+                                onSave(clean, coverUri, normalizeEmoji(coverEmoji))
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = colors.accent),
@@ -707,7 +821,7 @@ fun AddOrEditClothingDialog(
     var selectedFolder by remember { mutableStateOf<String?>(itemToEdit?.folderName ?: initialFolder) }
     var showClosetDropdown by remember { mutableStateOf(false) }
     var selectedImageUri by remember { mutableStateOf<Uri?>(itemToEdit?.imageUri) }
-    var emojiInput by remember { mutableStateOf(itemToEdit?.emoji ?: "") }
+    var emojiInput by remember { mutableStateOf(normalizeEmoji(itemToEdit?.emoji) ?: "") }
 
     var isCountable by remember { mutableStateOf(itemToEdit?.isCountable ?: false) }
     var quantity by remember { mutableIntStateOf(itemToEdit?.quantity ?: 1) }
@@ -754,7 +868,7 @@ fun AddOrEditClothingDialog(
         EmojiPickerDialog(
             onDismiss = { showEmojiPicker = false },
             onEmojiSelected = { selectedEmoji ->
-                emojiInput = selectedEmoji
+                emojiInput = normalizeEmoji(selectedEmoji) ?: selectedEmoji
                 selectedImageUri = null
             }
         )
@@ -880,7 +994,7 @@ fun AddOrEditClothingDialog(
                         if (selectedImageUri != null) {
                             Image(painter = rememberOptimizedPainter(selectedImageUri, 172), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                         } else if (emojiInput.isNotBlank()) {
-                            Text(emojiInput, fontSize = 38.sp)
+                            Text(normalizeEmoji(emojiInput) ?: emojiInput, fontSize = 38.sp)
                         } else {
                             Icon(Icons.Default.Checkroom, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(36.dp))
                         }
@@ -1121,7 +1235,7 @@ fun AddOrEditClothingDialog(
                                     quantity = if (isCountable) quantity.coerceAtLeast(1) else 1,
                                     color = Color.Transparent,
                                     imageUri = selectedImageUri,
-                                    emoji = emojiInput.ifBlank { null }
+                                    emoji = normalizeEmoji(emojiInput)
                                 )
                             )
                         },
@@ -1262,7 +1376,7 @@ fun ClothingDetailDialog(
                             )
                         } else if (!item.emoji.isNullOrBlank()) {
                             Text(
-                                text = item.emoji,
+                                text = normalizeEmoji(item.emoji) ?: item.emoji.orEmpty(),
                                 fontSize = 96.sp
                             )
                         } else {

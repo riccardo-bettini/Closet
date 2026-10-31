@@ -29,6 +29,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -39,6 +40,7 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,6 +51,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.layout.onSizeChanged
@@ -74,6 +77,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -89,6 +93,7 @@ import androidx.compose.ui.text.TextStyle as ComposeTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -155,6 +160,15 @@ fun FunctionsScreen(
     val colors = LocalOneUIColors.current
     val density = LocalDensity.current
     var currentSubScreen by remember { mutableStateOf<FunctionSubScreen?>(null) }
+    var isFunctionInfoOpen by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentSubScreen) {
+        isFunctionInfoOpen = false
+    }
+
+    BackHandler(enabled = isFunctionInfoOpen) {
+        isFunctionInfoOpen = false
+    }
 
     LaunchedEffect(initialSubScreen) {
         if (initialSubScreen != null) {
@@ -172,7 +186,7 @@ fun FunctionsScreen(
         onSubScreenActiveChange(currentSubScreen != null)
     }
 
-    BackHandler(enabled = currentSubScreen != null) {
+    BackHandler(enabled = currentSubScreen != null && !isFunctionInfoOpen) {
         currentSubScreen = null
     }
 
@@ -185,7 +199,7 @@ fun FunctionsScreen(
             FunctionItemDef(
                 id = "WARDROBE",
                 title = "Armadio",
-                subtitle = "$itemsCount capi in $closetsCount armadi",
+                subtitle = "Organizza, cerca e visualizza tutti i tuoi capi per armadio e cartelle",
                 icon = Icons.Outlined.Checkroom,
                 accentColor = if (useDistinct) Color(0xFF14B8A6) else colors.accent,
                 targetSubScreen = FunctionSubScreen.WARDROBE
@@ -193,7 +207,7 @@ fun FunctionsScreen(
             FunctionItemDef(
                 id = "CALENDAR",
                 title = "Calendario",
-                subtitle = "Pianifica outfit, lavaggi ed eventi",
+                subtitle = "Pianifica outfit, lavaggi ed eventi nel calendario",
                 icon = Icons.Outlined.CalendarMonth,
                 accentColor = if (useDistinct) Color(0xFF388AF6) else colors.accent,
                 targetSubScreen = FunctionSubScreen.CALENDAR
@@ -209,7 +223,7 @@ fun FunctionsScreen(
             FunctionItemDef(
                 id = "MOVE",
                 title = "Spostamento",
-                subtitle = "Trasferisci capi da un armadio all'altro",
+                subtitle = "Trasferisci capi da un armadio all'altro mantenendo le cartelle",
                 icon = Icons.Outlined.SyncAlt,
                 accentColor = if (useDistinct) Color(0xFF10B981) else colors.accent,
                 targetSubScreen = FunctionSubScreen.MOVE
@@ -324,49 +338,49 @@ fun FunctionsScreen(
                     val fadeColor = colors.backgroundBrush.let {
                         if (colors.isDark) Color(0xFF121212) else Color(0xFFF7F8FA)
                     }
+                    val topFadeColor = when {
+                        viewModel.currentTheme == AppTheme.AMOLED -> Color(0xFF000000)
+                        colors.isDark -> Color(0xFF13171E)
+                        else -> Color(0xFFF2F4F8)
+                    }
+                    val scrollState = rememberScrollState()
+                    val topFadeProgress = (scrollState.value.toFloat() / with(density) { 24.dp.toPx() }).coerceIn(0f, 1f)
 
                     Box(modifier = Modifier.fillMaxSize()) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(start = 20.dp, end = 20.dp, top = 20.dp)
-                        ) {
-                            AnimatedContent(
-                                targetState = isFunctionEditMode,
-                                transitionSpec = {
-                                    (fadeIn(tween(220)) + slideInVertically { -it / 3 }) togetherWith
-                                            (fadeOut(tween(160)) + slideOutVertically { it / 3 })
-                                },
-                                label = "functionTitleAnim"
-                            ) { editMode ->
-                                Text(
-                                    text = if (editMode) "Modifica funzioni" else "Funzioni",
-                                    fontSize = 28.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = colors.textPrimary,
-                                    letterSpacing = 0.5.sp,
-                                    modifier = Modifier.pointerInput(Unit) {
-                                        detectTapGestures(onLongPress = { })
-                                    }
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(18.dp))
-
-                            FunctionsInteractiveList(
-                                orderedFunctions = orderedFunctions,
-                                isEditMode = isFunctionEditMode,
-                                onEnterEditMode = onEnterFunctionEditMode,
-                                onUpdateVisibleOrder = commitVisibleFunctionOrder,
-                                onFunctionClick = { def ->
-                                    if (def.targetSubScreen == FunctionSubScreen.WARDROBE) {
-                                        onOpenWardrobeAsFunction()
-                                    } else if (def.targetSubScreen != null) {
-                                        currentSubScreen = def.targetSubScreen
-                                    }
+                        FunctionsInteractiveList(
+                            orderedFunctions = orderedFunctions,
+                            isEditMode = isFunctionEditMode,
+                            scrollState = scrollState,
+                            onEnterEditMode = onEnterFunctionEditMode,
+                            onUpdateVisibleOrder = commitVisibleFunctionOrder,
+                            onFunctionClick = { def ->
+                                if (def.targetSubScreen == FunctionSubScreen.WARDROBE) {
+                                    onOpenWardrobeAsFunction()
+                                } else if (def.targetSubScreen != null) {
+                                    currentSubScreen = def.targetSubScreen
                                 }
-                            )
-                        }
+                            }
+                        )
+
+                        // Sfumatura superiore in uscita
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .graphicsLayer { alpha = topFadeProgress }
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            topFadeColor,
+                                            topFadeColor.copy(alpha = 0.85f),
+                                            topFadeColor.copy(alpha = 0.40f),
+                                            Color.Transparent
+                                        )
+                                    )
+                                )
+                                .zIndex(15f)
+                        )
 
                         // Sfumatura morbida inferiore per far scomparire gli elementi sotto all'isola
                         Box(
@@ -441,6 +455,145 @@ fun FunctionsScreen(
                 }
             }
         }
+
+        if (isFunctionInfoOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(28f)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { isFunctionInfoOpen = false }
+            )
+        }
+
+        // Tasto Info circolare in alto a destra quando una funzione è aperta
+        val activeDef = remember(currentSubScreen, allFunctions) {
+            allFunctions.find { it.targetSubScreen == currentSubScreen }
+        }
+
+        if (activeDef != null) {
+            FunctionInfoButtonWithPopup(
+                title = activeDef.title,
+                description = activeDef.subtitle,
+                accentColor = activeDef.accentColor,
+                isOpen = isFunctionInfoOpen,
+                onToggleOpen = { isFunctionInfoOpen = !isFunctionInfoOpen },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 20.dp, top = 18.dp)
+                    .zIndex(30f)
+            )
+        }
+    }
+}
+
+@Composable
+fun FunctionInfoButtonWithPopup(
+    title: String,
+    description: String,
+    accentColor: Color,
+    isOpen: Boolean,
+    onToggleOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+    buttonSize: Dp = 40.dp
+) {
+    val colors = LocalOneUIColors.current
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.TopEnd
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = colors.surfaceSecondary,
+            border = BorderStroke(0.5.dp, colors.cardBorder),
+            tonalElevation = 4.dp,
+            shadowElevation = 6.dp,
+            modifier = Modifier.size(buttonSize)
+        ) {
+            IconButton(
+                onClick = onToggleOpen,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = "Informazioni $title",
+                    tint = accentColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        androidx.compose.animation.AnimatedVisibility(
+            visible = isOpen,
+            enter = fadeIn(tween(180)) + scaleIn(
+                initialScale = 0.35f,
+                transformOrigin = TransformOrigin(1f, 0f),
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            ) + slideInVertically(
+                initialOffsetY = { -it / 4 },
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+            ),
+            exit = fadeOut(tween(130)) + scaleOut(
+                targetScale = 0.35f,
+                transformOrigin = TransformOrigin(1f, 0f)
+            ) + slideOutVertically(targetOffsetY = { -it / 4 }),
+            modifier = Modifier
+                .padding(top = buttonSize + 8.dp)
+                .widthIn(min = 220.dp, max = 290.dp)
+                .zIndex(50f)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = colors.dialogBackground,
+                border = BorderStroke(0.5.dp, colors.cardBorder),
+                tonalElevation = 8.dp,
+                shadowElevation = 18.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = accentColor.copy(alpha = if (colors.isDark) 0.22f else 0.14f),
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Info,
+                                    contentDescription = null,
+                                    tint = accentColor,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = title,
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                    }
+
+                    Text(
+                        text = description,
+                        fontSize = 12.5.sp,
+                        color = colors.textSecondary,
+                        lineHeight = 17.sp
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -448,6 +601,7 @@ fun FunctionsScreen(
 private fun FunctionsInteractiveList(
     orderedFunctions: List<FunctionItemDef>,
     isEditMode: Boolean,
+    scrollState: ScrollState,
     onEnterEditMode: () -> Unit,
     onUpdateVisibleOrder: (List<String>) -> Unit,
     onFunctionClick: (FunctionItemDef) -> Unit
@@ -455,9 +609,8 @@ private fun FunctionsInteractiveList(
     val colors = LocalOneUIColors.current
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
-    val scrollState = rememberScrollState()
 
-    val itemHeightDp = 76.dp
+    val itemHeightDp = 72.dp
     val itemSpacingDp = 12.dp
     val stepDp = itemHeightDp + itemSpacingDp
     val stepPx = with(density) { stepDp.toPx() }
@@ -474,6 +627,7 @@ private fun FunctionsInteractiveList(
     var dragTouchOffsetY by remember { mutableFloatStateOf(0f) }
     var dragFingerCurrentY by remember { mutableFloatStateOf(0f) }
     var viewportHeightPx by remember { mutableFloatStateOf(0f) }
+    var titleSectionHeightPx by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(orderedFunctions, draggedItemId) {
         if (draggedItemId == null) {
@@ -556,7 +710,7 @@ private fun FunctionsInteractiveList(
                     val targetScroll = (scrollState.value + scrollDelta.roundToInt()).coerceIn(0, scrollState.maxValue)
                     if (targetScroll != scrollState.value) {
                         scrollState.scrollTo(targetScroll)
-                        val currentCardTopPx = dragFingerCurrentY + scrollState.value - dragTouchOffsetY
+                        val currentCardTopPx = dragFingerCurrentY - titleSectionHeightPx + scrollState.value - dragTouchOffsetY
                         val cardCenterPx = currentCardTopPx + (itemHeightPx / 2f)
                         val count = currentBaseCount
                         if (count > 0) {
@@ -587,7 +741,36 @@ private fun FunctionsInteractiveList(
                 viewportHeightPx = size.height.toFloat()
             }
             .verticalScroll(scrollState)
+            .padding(start = 20.dp, end = 20.dp, top = 20.dp)
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onSizeChanged { size -> titleSectionHeightPx = size.height.toFloat() }
+        ) {
+            AnimatedContent(
+                targetState = isEditMode,
+                transitionSpec = {
+                    (fadeIn(tween(220)) + slideInVertically { -it / 3 }) togetherWith
+                            (fadeOut(tween(160)) + slideOutVertically { it / 3 })
+                },
+                label = "functionTitleAnim"
+            ) { editMode ->
+                Text(
+                    text = if (editMode) "Modifica funzioni" else "Funzioni",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = colors.textPrimary,
+                    letterSpacing = 0.5.sp,
+                    modifier = Modifier.pointerInput(Unit) {
+                        detectTapGestures(onLongPress = { })
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -661,7 +844,7 @@ private fun FunctionsInteractiveList(
                     val currentDef by rememberUpdatedState(def)
 
                     val currentCardTopPx = if (isDragged) {
-                        dragFingerCurrentY + scrollState.value - dragTouchOffsetY
+                        dragFingerCurrentY - titleSectionHeightPx + scrollState.value - dragTouchOffsetY
                     } else 0f
                     val dragVisualTranslationY = if (isDragged) {
                         currentCardTopPx - (stepPx * dragStartIndex)
@@ -705,15 +888,15 @@ private fun FunctionsInteractiveList(
                                             dragStartIndex = startIdx
                                             targetHoverIndex = startIdx
                                             dragTouchOffsetY = down.position.y
-                                            dragFingerCurrentY = (stepPx * startIdx) + down.position.y - scrollState.value
+                                            dragFingerCurrentY = titleSectionHeightPx + (stepPx * startIdx) + down.position.y - scrollState.value
 
                                             var completed = false
                                             try {
                                                 completed = drag(down.id) { change ->
                                                     change.consume()
                                                     if (draggedItemId == def.id) {
-                                                        dragFingerCurrentY = (stepPx * startIdx) + change.position.y - scrollState.value
-                                                        val cardTop = dragFingerCurrentY + scrollState.value - dragTouchOffsetY
+                                                        dragFingerCurrentY = titleSectionHeightPx + (stepPx * startIdx) + change.position.y - scrollState.value
+                                                        val cardTop = dragFingerCurrentY - titleSectionHeightPx + scrollState.value - dragTouchOffsetY
                                                         val cardCenterPx = cardTop + (itemHeightPx / 2f)
                                                         val count = currentBaseCount
                                                         if (count > 0) {
@@ -834,21 +1017,14 @@ private fun FunctionInteractiveCard(
                     )
                 }
 
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = item.title,
-                        fontSize = 15.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.textPrimary
-                    )
-                    Text(
-                        text = item.subtitle,
-                        fontSize = 12.sp,
-                        color = colors.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                Text(
+                    text = item.title,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    modifier = Modifier.basicMarquee()
+                )
             }
 
             Box(

@@ -9,6 +9,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -736,7 +737,7 @@ fun ManageClosetsDialog(
                                                                         fontSize = 14.sp,
                                                                         fontWeight = FontWeight.Bold,
                                                                         maxLines = 1,
-                                                                        overflow = TextOverflow.Ellipsis
+                                                                        modifier = Modifier.basicMarquee()
                                                                     )
                                                                     Text(
                                                                         text = if (item.originalName == null) "Nuovo armadio" else "$itemsCount capi",
@@ -1678,7 +1679,7 @@ fun ManageTagsDialog(
                                                                             fontSize = 14.sp,
                                                                             fontWeight = FontWeight.Bold,
                                                                             maxLines = 1,
-                                                                            overflow = TextOverflow.Ellipsis
+                                                                            modifier = Modifier.basicMarquee()
                                                                         )
                                                                         Text(
                                                                             text = if (item.originalName == null) "Nuovo tag" else "$itemsCount capi",

@@ -24,6 +24,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -449,7 +450,7 @@ fun TopActionMenuItem(
                 fontSize = 13.5.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                modifier = Modifier.basicMarquee()
             )
         }
     }
@@ -678,17 +679,17 @@ private fun FloatingIslandItem(
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 softWrap = false,
-                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .padding(horizontal = 4.dp)
                     .offset(y = 11.dp)
+                    .basicMarquee()
             )
         }
     }
 }
 
 // =========================================================================
-// CARD EXTRA "ARMADIO" QUANDO L'ARMADIO NON ÃƒÆ’Ã‹â€  NELL'ISOLA INFERIORE
+// CARD EXTRA "ARMADIO" QUANDO L'ARMADIO NON È NELL'ISOLA INFERIORE
 // =========================================================================
 
 @Composable
@@ -746,7 +747,7 @@ private fun WardrobeFunctionBannerCard(
                         color = colors.textPrimary
                     )
                     Text(
-                        text = "$itemsCount capi in $closetsCount armadi ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Tocca per aprire",
+                        text = "$itemsCount capi in $closetsCount armadi • Tocca per aprire",
                         fontSize = 12.sp,
                         color = colors.textSecondary,
                         maxLines = 1,
@@ -789,8 +790,15 @@ fun HomeScreen(
     val currentTab = islandTabs.getOrNull(pagerState.currentPage) ?: IslandTabType.HOME
     var isShowingSettings by remember { mutableStateOf(false) }
 
-    // Stato per quando l'Armadio non ÃƒÆ’Ã‚Â¨ nell'isola ma viene aperto come funzione dentro "Funzioni"
+    // Stato per quando l'Armadio non è nell'isola ma viene aperto come funzione dentro "Funzioni"
     var isWardrobeOpenedAsSubFunction by remember { mutableStateOf(false) }
+    var isWardrobeFunctionInfoOpen by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isWardrobeOpenedAsSubFunction) {
+        if (!isWardrobeOpenedAsSubFunction) {
+            isWardrobeFunctionInfoOpen = false
+        }
+    }
 
     val homeScrollState = rememberScrollState()
     var wardrobeScrollToTopTrigger by remember { mutableIntStateOf(0) }
@@ -928,7 +936,7 @@ fun HomeScreen(
     var originalFolderState by remember { mutableStateOf<List<ClosetFolder>>(emptyList()) }
     var originalWidgetsState by remember { mutableStateOf<List<PlacedWidget>>(emptyList()) }
 
-    // Helper universale per navigare a qualsiasi scheda (se ÃƒÆ’Ã‚Â¨ nell'isola) o aprirla dentro "Funzioni" (se non ÃƒÆ’Ã‚Â¨ nell'isola)
+    // Helper universale per navigare a qualsiasi scheda (se è nell'isola) o aprirla dentro "Funzioni" (se non è nell'isola)
     fun navigateToTabOrFunction(targetTab: IslandTabType) {
         val idxInIsland = islandTabs.indexOf(targetTab)
         if (idxInIsland != -1) {
@@ -989,6 +997,7 @@ fun HomeScreen(
     val shouldInterceptBack = !isInFunctionsGridSubScreen && (
             isCameraActive ||
                     showDeleteSelectedConfirmDialog ||
+                    isWardrobeFunctionInfoOpen ||
                     isItemEditAddMenuOpen ||
                     isFunctionOptionsMenuOpen ||
                     isFavoriteIslandOpen ||
@@ -1006,6 +1015,7 @@ fun HomeScreen(
     BackHandler(enabled = shouldInterceptBack) {
         when {
             isCameraActive -> isCameraActive = false
+            isWardrobeFunctionInfoOpen -> isWardrobeFunctionInfoOpen = false
             showDeleteSelectedConfirmDialog -> showDeleteSelectedConfirmDialog = false
             isItemEditAddMenuOpen -> isItemEditAddMenuOpen = false
             isFunctionOptionsMenuOpen -> isFunctionOptionsMenuOpen = false
@@ -1171,78 +1181,102 @@ fun HomeScreen(
                                 modifier = Modifier.fillMaxSize()
                             ) { isWardrobeActive ->
                                 if (isWardrobeActive) {
-                                    Column(modifier = Modifier.fillMaxSize()) {
-                                        // Barra di ritorno alla schermata Funzioni
-                                        if (!isItemEditMode && !isCameraActive) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 2.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Surface(
-                                                    shape = CircleShape,
-                                                    color = themeColors.surfaceSecondary,
-                                                    border = BorderStroke(0.5.dp, themeColors.cardBorder),
-                                                    tonalElevation = 4.dp,
-                                                    shadowElevation = 4.dp,
-                                                    modifier = Modifier.clickable {
-                                                        isWardrobeOpenedAsSubFunction = false
-                                                    }
+                                    Box(modifier = Modifier.fillMaxSize()) {
+                                        Column(modifier = Modifier.fillMaxSize()) {
+                                            // Barra di ritorno alla schermata Funzioni
+                                            if (!isItemEditMode && !isCameraActive) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 2.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
                                                 ) {
-                                                    Row(
-                                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    Surface(
+                                                        shape = CircleShape,
+                                                        color = themeColors.surfaceSecondary,
+                                                        border = BorderStroke(0.5.dp, themeColors.cardBorder),
+                                                        tonalElevation = 4.dp,
+                                                        shadowElevation = 4.dp,
+                                                        modifier = Modifier.clickable {
+                                                            isWardrobeOpenedAsSubFunction = false
+                                                        }
                                                     ) {
-                                                        Icon(
-                                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                                            contentDescription = "Torna a Funzioni",
-                                                            tint = themeColors.accent,
-                                                            modifier = Modifier.size(16.dp)
-                                                        )
-                                                        Text(
-                                                            text = "Funzioni",
-                                                            fontSize = 12.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = themeColors.textPrimary
-                                                        )
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                                                contentDescription = "Torna a Funzioni",
+                                                                tint = themeColors.accent,
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                            Text(
+                                                                text = "Funzioni",
+                                                                fontSize = 12.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = themeColors.textPrimary
+                                                            )
+                                                        }
                                                     }
+
+                                                    FunctionInfoButtonWithPopup(
+                                                        title = "Armadio",
+                                                        description = "Organizza, cerca e visualizza tutti i tuoi capi per armadio e cartelle",
+                                                        accentColor = if (viewModel.useDistinctFunctionColors) Color(0xFF14B8A6) else themeColors.accent,
+                                                        isOpen = isWardrobeFunctionInfoOpen,
+                                                        onToggleOpen = { isWardrobeFunctionInfoOpen = !isWardrobeFunctionInfoOpen },
+                                                        buttonSize = 34.dp
+                                                    )
                                                 }
+                                            }
+
+                                            Box(modifier = Modifier.weight(1f)) {
+                                                WardrobeScreen(
+                                                    viewModel = viewModel,
+                                                    showAddItemSheet = showAddClothingSheet,
+                                                    onDismissAddItemSheet = { showAddClothingSheet = false },
+                                                    showManageClosetsDialog = showManageClosetsDialog,
+                                                    onDismissManageClosets = { showManageClosetsDialog = false },
+                                                    onOpenManageClosets = { showManageClosetsDialog = true },
+                                                    showManageTagsDialog = showManageTagsDialog,
+                                                    onDismissManageTags = { showManageTagsDialog = false },
+                                                    isItemEditMode = isItemEditMode,
+                                                    onEnterItemEditMode = { isItemEditMode = true },
+                                                    onExitItemEditMode = {
+                                                        selectedItemIds.clear()
+                                                        selectedItemQuantities.clear()
+                                                        isItemEditMode = false
+                                                    },
+                                                    selectedItemIds = selectedItemIds,
+                                                    selectedItemQuantities = selectedItemQuantities,
+                                                    triggerCreateFolder = onRequestCreateFolder,
+                                                    onFolderDialogConsumed = { onRequestCreateFolder = false },
+                                                    triggerMoveItems = onRequestMoveItems,
+                                                    onMoveDialogConsumed = { onRequestMoveItems = false },
+                                                    onCameraActiveChange = { active: Boolean -> isCameraActive = active },
+                                                    isSearchActive = isWardrobeSearchActive,
+                                                    onSearchActiveChange = { isWardrobeSearchActive = it },
+                                                    targetWardrobeCloset = targetWardrobeCloset,
+                                                    onTargetWardrobeClosetConsumed = { targetWardrobeCloset = null },
+                                                    searchQuery = wardrobeSearchQuery,
+                                                    filterTags = wardrobeFilterTags,
+                                                    scrollToTopTrigger = wardrobeScrollToTopTrigger
+                                                )
                                             }
                                         }
 
-                                        Box(modifier = Modifier.weight(1f)) {
-                                            WardrobeScreen(
-                                                viewModel = viewModel,
-                                                showAddItemSheet = showAddClothingSheet,
-                                                onDismissAddItemSheet = { showAddClothingSheet = false },
-                                                showManageClosetsDialog = showManageClosetsDialog,
-                                                onDismissManageClosets = { showManageClosetsDialog = false },
-                                                onOpenManageClosets = { showManageClosetsDialog = true },
-                                                showManageTagsDialog = showManageTagsDialog,
-                                                onDismissManageTags = { showManageTagsDialog = false },
-                                                isItemEditMode = isItemEditMode,
-                                                onEnterItemEditMode = { isItemEditMode = true },
-                                                onExitItemEditMode = {
-                                                    selectedItemIds.clear()
-                                                    selectedItemQuantities.clear()
-                                                    isItemEditMode = false
-                                                },
-                                                selectedItemIds = selectedItemIds,
-                                                selectedItemQuantities = selectedItemQuantities,
-                                                triggerCreateFolder = onRequestCreateFolder,
-                                                onFolderDialogConsumed = { onRequestCreateFolder = false },
-                                                triggerMoveItems = onRequestMoveItems,
-                                                onMoveDialogConsumed = { onRequestMoveItems = false },
-                                                onCameraActiveChange = { active: Boolean -> isCameraActive = active },
-                                                isSearchActive = isWardrobeSearchActive,
-                                                onSearchActiveChange = { isWardrobeSearchActive = it },
-                                                targetWardrobeCloset = targetWardrobeCloset,
-                                                onTargetWardrobeClosetConsumed = { targetWardrobeCloset = null },
-                                                searchQuery = wardrobeSearchQuery,
-                                                filterTags = wardrobeFilterTags,
-                                                scrollToTopTrigger = wardrobeScrollToTopTrigger
+                                        if (isWardrobeFunctionInfoOpen) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .zIndex(28f)
+                                                    .clickable(
+                                                        interactionSource = remember { MutableInteractionSource() },
+                                                        indication = null
+                                                    ) { isWardrobeFunctionInfoOpen = false }
                                             )
                                         }
                                     }
@@ -1549,6 +1583,19 @@ fun HomeScreen(
                                             }
                                         )
                                         TopActionMenuItem(
+                                            icon = Icons.Default.ViewAgenda,
+                                            iconTint = themeColors.accent,
+                                            title = "Gestione schede",
+                                            onClick = {
+                                                isTopMenuOpen = false
+                                                showIslandTabsEditorDialog = true
+                                            }
+                                        )
+                                        HorizontalDivider(
+                                            color = themeColors.cardBorder,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                        TopActionMenuItem(
                                             icon = Icons.Default.Settings,
                                             iconTint = themeColors.textSecondary,
                                             title = "Impostazioni",
@@ -1762,31 +1809,6 @@ fun HomeScreen(
                                                     }
                                                 }
 
-                                                // Tasto Cerca evidenziato solo icona
-                                                Surface(
-                                                    shape = CircleShape,
-                                                    color = themeColors.accent.copy(alpha = 0.14f),
-                                                    border = BorderStroke(0.5.dp, themeColors.accent.copy(alpha = 0.35f)),
-                                                    modifier = Modifier
-                                                        .size(38.dp)
-                                                        .clickable {
-                                                            isItemEditAddMenuOpen = false
-                                                            isWardrobeSearchActive = true
-                                                        }
-                                                ) {
-                                                    Box(
-                                                        contentAlignment = Alignment.Center,
-                                                        modifier = Modifier.fillMaxSize()
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Search,
-                                                            contentDescription = "Cerca",
-                                                            tint = themeColors.accent,
-                                                            modifier = Modifier.size(19.dp)
-                                                        )
-                                                    }
-                                                }
-
                                                 androidx.compose.animation.AnimatedVisibility(
                                                     visible = selectedItemIds.isNotEmpty(),
                                                     enter = fadeIn(tween(200)) + expandHorizontally(spring(stiffness = Spring.StiffnessMediumLow)),
@@ -1839,6 +1861,31 @@ fun HomeScreen(
                                                                 )
                                                             }
                                                         }
+                                                    }
+                                                }
+
+                                                // Tasto Cerca evidenziato solo icona (a destra del tasto Elimina quando ci sono elementi selezionati)
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = themeColors.accent.copy(alpha = 0.14f),
+                                                    border = BorderStroke(0.5.dp, themeColors.accent.copy(alpha = 0.35f)),
+                                                    modifier = Modifier
+                                                        .size(38.dp)
+                                                        .clickable {
+                                                            isItemEditAddMenuOpen = false
+                                                            isWardrobeSearchActive = true
+                                                        }
+                                                ) {
+                                                    Box(
+                                                        contentAlignment = Alignment.Center,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Search,
+                                                            contentDescription = "Cerca",
+                                                            tint = themeColors.accent,
+                                                            modifier = Modifier.size(19.dp)
+                                                        )
                                                     }
                                                 }
 
@@ -2144,7 +2191,7 @@ fun HomeScreen(
                                             Box(contentAlignment = Alignment.Center) {
                                                 Icon(
                                                     imageVector = Icons.Outlined.Palette,
-                                                    contentDescription = "Opzioni modalitÃƒÆ’Ã‚Â ",
+                                                    contentDescription = "Opzioni modalità",
                                                     tint = if (isFunctionOptionsMenuOpen) themeColors.accent else themeColors.textPrimary,
                                                     modifier = Modifier.size(21.dp)
                                                 )
@@ -2629,7 +2676,7 @@ fun HomeScreen(
                 text = {
                     Text(
                         text = if (selectedItemIds.size == 1)
-                            "Il capo selezionato verrÃƒÆ’Ã‚Â  eliminato definitivamente dall'armadio."
+                            "Il capo selezionato verrà eliminato definitivamente dall'armadio."
                         else
                             "I ${selectedItemIds.size} capi selezionati verranno eliminati definitivamente dall'armadio.",
                         color = themeColors.textSecondary,
@@ -2846,6 +2893,34 @@ fun HomeDashboardGrid(
                 )
             }
         }
+
+        val density = LocalDensity.current
+        val topFadeColor = when {
+            viewModel.currentTheme == AppTheme.AMOLED -> Color(0xFF000000)
+            colors.isDark -> Color(0xFF13171E)
+            else -> Color(0xFFF2F4F8)
+        }
+        val topFadeProgress = (scrollState.value.toFloat() / with(density) { 24.dp.toPx() }).coerceIn(0f, 1f)
+
+        // SFUMATURA SUPERIORE IN USCITA
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(42.dp)
+                .graphicsLayer { alpha = topFadeProgress }
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            topFadeColor,
+                            topFadeColor.copy(alpha = 0.85f),
+                            topFadeColor.copy(alpha = 0.40f),
+                            Color.Transparent
+                        )
+                    )
+                )
+                .zIndex(15f)
+        )
     }
 }
 

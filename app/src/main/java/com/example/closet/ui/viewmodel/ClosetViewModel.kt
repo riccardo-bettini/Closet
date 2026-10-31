@@ -23,6 +23,7 @@ import com.example.closet.ui.screens.PlacedFavoriteShortcut
 import com.example.closet.ui.screens.PlacedWidget
 import com.example.closet.ui.screens.WidgetType
 import com.example.closet.ui.screens.compactFavoriteRows
+import com.example.closet.ui.screens.normalizeEmoji
 import com.example.closet.ui.screens.normalizeGridPlacements
 import com.example.closet.ui.screens.normalizeIslandTabs
 import kotlinx.coroutines.Dispatchers
@@ -706,7 +707,7 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
                         isCountable = iObj.getBoolean("isCountable"),
                         quantity = iObj.getInt("quantity"),
                         imageUri = if (imgStr.isNotBlank()) Uri.parse(imgStr) else null,
-                        emoji = iObj.optString("emoji", "").ifBlank { null },
+                        emoji = normalizeEmoji(iObj.optString("emoji", "")),
                         tags = tagsList
                     )
                 )
@@ -1758,7 +1759,7 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
     fun addFolder(closetName: String, folderName: String, coverImageUri: Uri? = null, coverEmoji: String? = null) {
         val clean = folderName.trim()
         if (clean.isNotBlank() && !closetFolders.any { it.closetName == closetName && it.folderName.equals(clean, ignoreCase = true) }) {
-            closetFolders.add(ClosetFolder(closetName, clean, coverImageUri, coverEmoji))
+            closetFolders.add(ClosetFolder(closetName, clean, coverImageUri, normalizeEmoji(coverEmoji)))
             saveFolders()
         }
     }
@@ -1809,7 +1810,7 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
                             closetName = obj.getString("closet"),
                             folderName = obj.getString("folder"),
                             coverImageUri = if (coverStr.isNotBlank()) Uri.parse(coverStr) else null,
-                            coverEmoji = if (emojiStr.isNotBlank()) emojiStr else null
+                            coverEmoji = normalizeEmoji(emojiStr)
                         )
                     )
                 }
@@ -2073,14 +2074,14 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun addClothingItem(item: ClothingItem) {
-        clothingItems.add(item)
+        clothingItems.add(item.copy(emoji = normalizeEmoji(item.emoji)))
         saveClothingItems()
     }
 
     fun updateClothingItem(item: ClothingItem) {
         val index = clothingItems.indexOfFirst { it.id == item.id }
         if (index != -1) {
-            clothingItems[index] = item
+            clothingItems[index] = item.copy(emoji = normalizeEmoji(item.emoji))
             saveClothingItems()
         }
     }
@@ -2146,7 +2147,7 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
                             folderName = if (fName.isNotBlank()) fName else null,
                             color = Color.Transparent,
                             imageUri = if (imgStr.isNotBlank()) Uri.parse(imgStr) else null,
-                            emoji = if (emojiStr.isNotBlank()) emojiStr else null,
+                            emoji = normalizeEmoji(emojiStr),
                             isCountable = obj.optBoolean("isCountable", false),
                             quantity = obj.optInt("quantity", 1)
                         )
