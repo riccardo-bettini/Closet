@@ -155,19 +155,46 @@ fun ClosetPhotosScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp),
+                    .height(40.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Spacer(modifier = Modifier.width(52.dp))
+                Surface(
+                    shape = CircleShape,
+                    color = colors.surfaceSecondary,
+                    border = BorderStroke(0.5.dp, colors.cardBorder),
+                    tonalElevation = 4.dp,
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Torna alle funzioni",
+                            tint = screenAccent,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
 
                 Text(
                     text = "Foto armadio",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = colors.textPrimary,
-                    letterSpacing = 0.5.sp
+                    letterSpacing = 0.5.sp,
+                    modifier = Modifier.weight(1f)
                 )
+
+                // Spazio segnaposto riservato al tasto Info (40.dp) per allineamento e bilanciamento perfetto
+                Spacer(modifier = Modifier.width(40.dp))
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
@@ -190,31 +217,6 @@ fun ClosetPhotosScreen(
                         }
                     )
                 }
-            }
-        }
-
-        Surface(
-            shape = CircleShape,
-            color = colors.surfaceSecondary,
-            border = BorderStroke(0.5.dp, colors.cardBorder),
-            tonalElevation = 4.dp,
-            shadowElevation = 6.dp,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 20.dp, top = 18.dp)
-                .size(40.dp)
-                .zIndex(20f)
-        ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.fillMaxSize()
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Torna alle funzioni",
-                    tint = screenAccent,
-                    modifier = Modifier.size(20.dp)
-                )
             }
         }
     }

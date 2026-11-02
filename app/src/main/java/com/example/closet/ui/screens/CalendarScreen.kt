@@ -150,12 +150,12 @@ fun CalendarScreen(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Transparent)
-            .padding(horizontal = 16.dp)
+            .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 12.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp),
+                .height(40.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
