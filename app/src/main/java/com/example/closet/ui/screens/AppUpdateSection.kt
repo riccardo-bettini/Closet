@@ -1,6 +1,5 @@
 package com.example.closet.ui.screens
 
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -26,15 +25,14 @@ import com.example.closet.ui.updater.AppUpdateManager
 import com.example.closet.ui.updater.GitHubReleaseInfo
 import com.example.closet.ui.updater.UpdateUiState
 import kotlinx.coroutines.launch
-import java.io.File
 
 @Composable
 fun AppUpdateSection(
-    currentVersionName: String,
-    colors: SettingsThemeColors
+    currentVersionName: String
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val colors = LocalOneUIColors.current
 
     var updateState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
 
@@ -75,10 +73,26 @@ fun AppUpdateSection(
     }
 
     // Header sezione
-    SettingsSectionHeader(
-        title = "Aggiornamento Software",
-        icon = Icons.Outlined.SystemUpdate
-    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.SystemUpdate,
+            contentDescription = null,
+            tint = colors.textSecondary,
+            modifier = Modifier.size(18.dp)
+        )
+        Text(
+            text = "Aggiornamento Software",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.textSecondary
+        )
+    }
 
     Surface(
         shape = RoundedCornerShape(24.dp),

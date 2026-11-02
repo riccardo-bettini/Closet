@@ -601,8 +601,7 @@ fun SettingsScreen(
                     }
 
                     AppUpdateSection(
-                        currentVersionName = appVersionName,
-                        colors = colors
+                        currentVersionName = appVersionName
                     )
 
                     // =====================================================
