@@ -588,7 +588,7 @@ fun SettingsScreen(
                     }
 
                     // =====================================================
-                    // INFO VERSIONE APP E AUTORE (Auto-aggiornante)
+                    // SEZIONE 5: AGGIORNAMENTO SOFTWARE
                     // =====================================================
                     val context = LocalContext.current
                     val appVersionName = remember(context) {
@@ -600,6 +600,14 @@ fun SettingsScreen(
                         }
                     }
 
+                    AppUpdateSection(
+                        currentVersionName = appVersionName,
+                        colors = colors
+                    )
+
+                    // =====================================================
+                    // INFO VERSIONE APP E AUTORE (Auto-aggiornante)
+                    // =====================================================
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
