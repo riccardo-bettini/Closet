@@ -892,7 +892,22 @@ fun WardrobeScreen(
                             itemsIndexed(foldersToShow, key = { _, f -> "folder_${f.folderName}" }) { _, folder ->
                                 val count = folderItemCounts[folder.folderName] ?: 0
                                 val effectiveCover = folder.coverImageUri ?: folderFirstImages[folder.folderName]
-                                Box(modifier = Modifier.zIndex(200f)) {
+                                val folderScale by animateFloatAsState(
+                                    targetValue = if (isItemEditMode) 0.95f else 1f,
+                                    animationSpec = spring(
+                                        stiffness = Spring.StiffnessMediumLow,
+                                        dampingRatio = Spring.DampingRatioNoBouncy
+                                    ),
+                                    label = "gridFolderScale"
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .zIndex(200f)
+                                        .graphicsLayer {
+                                            scaleX = folderScale
+                                            scaleY = folderScale
+                                        }
+                                ) {
                                     FolderGridCard(
                                         folderName = folder.folderName,
                                         itemCount = count,
@@ -915,10 +930,14 @@ fun WardrobeScreen(
                                 val isDraggedItem = draggedItemId == item.id
                                 val isSelected = selectedItemIds.contains(item.id)
                                 val currentScale by animateFloatAsState(
-                                    targetValue = if (isDraggedItem) 1.06f else 1f,
+                                    targetValue = when {
+                                        isDraggedItem -> 1.06f
+                                        isItemEditMode -> 0.95f
+                                        else -> 1f
+                                    },
                                     animationSpec = spring(
                                         stiffness = Spring.StiffnessMediumLow,
-                                        dampingRatio = Spring.DampingRatioLowBouncy
+                                        dampingRatio = Spring.DampingRatioNoBouncy
                                     ),
                                     label = "gridItemScale"
                                 )
@@ -1197,7 +1216,22 @@ fun WardrobeScreen(
                             itemsIndexed(foldersToShow, key = { _, f -> "folder_${f.folderName}" }) { _, folder ->
                                 val count = folderItemCounts[folder.folderName] ?: 0
                                 val effectiveCover = folder.coverImageUri ?: folderFirstImages[folder.folderName]
-                                Box(modifier = Modifier.zIndex(200f)) {
+                                val folderScale by animateFloatAsState(
+                                    targetValue = if (isItemEditMode) 0.95f else 1f,
+                                    animationSpec = spring(
+                                        stiffness = Spring.StiffnessMediumLow,
+                                        dampingRatio = Spring.DampingRatioNoBouncy
+                                    ),
+                                    label = "listFolderScale"
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .zIndex(200f)
+                                        .graphicsLayer {
+                                            scaleX = folderScale
+                                            scaleY = folderScale
+                                        }
+                                ) {
                                     FolderListCard(
                                         folderName = folder.folderName,
                                         itemCount = count,
@@ -1218,10 +1252,14 @@ fun WardrobeScreen(
                                 val isDraggedItem = draggedItemId == item.id
                                 val isSelected = selectedItemIds.contains(item.id)
                                 val currentScale by animateFloatAsState(
-                                    targetValue = if (isDraggedItem) 1.04f else 1f,
+                                    targetValue = when {
+                                        isDraggedItem -> 1.04f
+                                        isItemEditMode -> 0.95f
+                                        else -> 1f
+                                    },
                                     animationSpec = spring(
                                         stiffness = Spring.StiffnessMediumLow,
-                                        dampingRatio = Spring.DampingRatioLowBouncy
+                                        dampingRatio = Spring.DampingRatioNoBouncy
                                     ),
                                     label = "listItemScale"
                                 )

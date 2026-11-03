@@ -362,42 +362,23 @@ fun FunctionsScreen(
                             }
                         )
 
-                        // Sfumatura superiore in uscita
+                        // Sfumatura superiore morbida in uscita
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
                                 .fillMaxWidth()
-                                .height(42.dp)
+                                .height(38.dp)
                                 .graphicsLayer { alpha = topFadeProgress }
                                 .background(
                                     Brush.verticalGradient(
                                         colors = listOf(
-                                            topFadeColor,
-                                            topFadeColor.copy(alpha = 0.85f),
-                                            topFadeColor.copy(alpha = 0.40f),
+                                            topFadeColor.copy(alpha = 0.70f),
+                                            topFadeColor.copy(alpha = 0.30f),
                                             Color.Transparent
                                         )
                                     )
                                 )
                                 .zIndex(15f)
-                        )
-
-                        // Sfumatura morbida inferiore per far scomparire gli elementi sotto all'isola
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                                .height(56.dp)
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            fadeColor.copy(alpha = 0.75f),
-                                            fadeColor
-                                        )
-                                    )
-                                )
-                                .zIndex(5f)
                         )
                     }
                 }
@@ -751,8 +732,8 @@ private fun FunctionsInteractiveList(
             AnimatedContent(
                 targetState = isEditMode,
                 transitionSpec = {
-                    (fadeIn(tween(220)) + slideInVertically { -it / 3 }) togetherWith
-                            (fadeOut(tween(160)) + slideOutVertically { it / 3 })
+                    (fadeIn(animationSpec = tween(220, delayMillis = 40)) + slideInVertically { it / 3 })
+                        .togetherWith(fadeOut(animationSpec = tween(160)) + slideOutVertically { -it / 3 })
                 },
                 label = "functionTitleAnim"
             ) { editMode ->

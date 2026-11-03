@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -18,7 +19,10 @@ import com.example.closet.ui.screens.AppTheme
 import com.example.closet.ui.screens.CalendarEvent
 import com.example.closet.ui.screens.ClothingItem
 import com.example.closet.ui.screens.FavoriteActionType
+import com.example.closet.ui.screens.HomeLayoutMode
 import com.example.closet.ui.screens.IslandTabType
+import com.example.closet.ui.screens.PageIndicatorPosition
+import com.example.closet.ui.screens.PageIndicatorVisibility
 import com.example.closet.ui.screens.PlacedFavoriteShortcut
 import com.example.closet.ui.screens.PlacedWidget
 import com.example.closet.ui.screens.WidgetType
@@ -26,9 +30,12 @@ import com.example.closet.ui.screens.compactFavoriteRows
 import com.example.closet.ui.screens.normalizeEmoji
 import com.example.closet.ui.screens.normalizeGridPlacements
 import com.example.closet.ui.screens.normalizeIslandTabs
+import com.example.closet.ui.updater.AppUpdateManager
+import com.example.closet.ui.updater.GitHubReleaseInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -121,6 +128,26 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
         private set
 
     var useDistinctFunctionColors by mutableStateOf(true)
+        private set
+
+    var autoCheckUpdatesOnStartup by mutableStateOf(true)
+        private set
+
+    var startupUpdateRelease by mutableStateOf<GitHubReleaseInfo?>(null)
+        private set
+
+    private var hasCheckedStartupUpdate = false
+
+    var homeLayoutMode by mutableStateOf(HomeLayoutMode.PAGED)
+        private set
+
+    var homeMaxRowsPerPage by mutableIntStateOf(6)
+        private set
+
+    var homePageIndicatorVisibility by mutableStateOf(PageIndicatorVisibility.ON_SCROLL)
+        private set
+
+    var homePageIndicatorPosition by mutableStateOf(PageIndicatorPosition.RIGHT)
         private set
 
     var homeWidgets = mutableStateListOf<PlacedWidget>()
@@ -309,6 +336,8 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
         loadTheme()
         loadAccentColor()
         loadFunctionColorsSetting()
+        loadAutoCheckUpdatesSetting()
+        loadHomeConfig()
         loadWidgets()
         loadClosets()
         loadFolders()
@@ -834,6 +863,36 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun loadFunctionColorsSetting() {
         useDistinctFunctionColors = prefs.getBoolean("use_distinct_function_colors", true)
+    }
+
+    fun updateAutoCheckUpdatesOnStartup(enabled: Boolean) {
+        autoCheckUpdatesOnStartup = enabled
+        prefs.edit().putBoolean("pref_auto_check_updates_startup", enabled).apply()
+    }
+
+    private fun loadAutoCheckUpdatesSetting() {
+        autoCheckUpdatesOnStartup = prefs.getBoolean("pref_auto_check_updates_startup", true)
+    }
+
+    fun checkForStartupUpdates(currentVersionName: String) {
+        if (hasCheckedStartupUpdate || !autoCheckUpdatesOnStartup) return
+        hasCheckedStartupUpdate = true
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = AppUpdateManager.checkForUpdate(currentVersionName)
+            result.onSuccess { release ->
+                if (release != null) {
+                    withContext(Dispatchers.Main) {
+                        startupUpdateRelease = release
+                    }
+                }
+            }.onFailure {
+                // Silenzioso all'avvio in assenza di rete o errore
+            }
+        }
+    }
+
+    fun dismissStartupUpdateDialog() {
+        startupUpdateRelease = null
     }
 
     fun setClosetPhoto(closetName: String, uri: Uri?) {
@@ -1442,6 +1501,7 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
         currentTheme = AppTheme.DARK
         customAccentColor = null
         useDistinctFunctionColors = true
+        autoCheckUpdatesOnStartup = true
         functionOrder.clear()
         functionOrder.addAll(
             listOf(
@@ -1484,6 +1544,7 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
                 .remove("app_theme")
                 .remove("custom_accent_color")
                 .remove("use_distinct_function_colors")
+                .remove("pref_auto_check_updates_startup")
                 .remove("functions_order")
                 .remove("pref_island_tabs_v1")
                 .apply()
@@ -1493,8 +1554,72 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
         updateFavoriteShortcuts(getDefaultFavoriteShortcuts())
     }
 
-    fun addWidget(type: WidgetType, targetCloset: String? = null) {
-        val currentNormalized = normalizeGridPlacements(homeWidgets)
+    fun updateHomeLayoutMode(mode: HomeLayoutMode) {
+        if (homeLayoutMode != mode) {
+            homeLayoutMode = mode
+            prefs.edit().putString("pref_home_layout_mode", mode.name).apply()
+            reorganizeWidgetsForMode(mode, homeMaxRowsPerPage)
+        }
+    }
+
+    fun updateHomeMaxRowsPerPage(rows: Int) {
+        val clamped = rows.coerceIn(6, 7)
+        if (homeMaxRowsPerPage != clamped) {
+            homeMaxRowsPerPage = clamped
+            prefs.edit().putInt("pref_home_max_rows_per_page", clamped).apply()
+            if (homeLayoutMode == HomeLayoutMode.PAGED) {
+                reorganizeWidgetsForMode(homeLayoutMode, clamped)
+            }
+        }
+    }
+
+    fun updateHomePageIndicatorVisibility(visibility: PageIndicatorVisibility) {
+        if (homePageIndicatorVisibility != visibility) {
+            homePageIndicatorVisibility = visibility
+            prefs.edit().putString("pref_home_page_indicator_visibility", visibility.name).apply()
+        }
+    }
+
+    fun updateHomePageIndicatorPosition(position: PageIndicatorPosition) {
+        if (homePageIndicatorPosition != position) {
+            homePageIndicatorPosition = position
+            prefs.edit().putString("pref_home_page_indicator_position", position.name).apply()
+        }
+    }
+
+    private fun loadHomeConfig() {
+        val modeStr = prefs.getString("pref_home_layout_mode", HomeLayoutMode.PAGED.name)
+        homeLayoutMode = runCatching {
+            HomeLayoutMode.valueOf(modeStr ?: HomeLayoutMode.PAGED.name)
+        }.getOrDefault(HomeLayoutMode.PAGED)
+
+        homeMaxRowsPerPage = prefs.getInt("pref_home_max_rows_per_page", 6).coerceIn(6, 7)
+
+        val visStr = prefs.getString("pref_home_page_indicator_visibility", PageIndicatorVisibility.ON_SCROLL.name)
+        homePageIndicatorVisibility = runCatching {
+            PageIndicatorVisibility.valueOf(visStr ?: PageIndicatorVisibility.ON_SCROLL.name)
+        }.getOrDefault(PageIndicatorVisibility.ON_SCROLL)
+
+        val posStr = prefs.getString("pref_home_page_indicator_position", PageIndicatorPosition.RIGHT.name)
+        homePageIndicatorPosition = runCatching {
+            PageIndicatorPosition.valueOf(posStr ?: PageIndicatorPosition.RIGHT.name)
+        }.getOrDefault(PageIndicatorPosition.RIGHT)
+    }
+
+    private fun reorganizeWidgetsForMode(mode: HomeLayoutMode, maxRows: Int) {
+        val current = homeWidgets.toList()
+        val maxRowsPerPage = if (mode == HomeLayoutMode.PAGED) maxRows else 0
+        val normalized = normalizeGridPlacements(current, maxRowsPerPage).map {
+            it.widget.copy(gridRow = it.row, gridCol = it.col)
+        }
+        homeWidgets.clear()
+        homeWidgets.addAll(normalized)
+        saveWidgets()
+    }
+
+    fun addWidget(type: WidgetType, targetCloset: String? = null, preferredPage: Int = 0) {
+        val maxRows = if (homeLayoutMode == HomeLayoutMode.PAGED) homeMaxRowsPerPage else 0
+        val currentNormalized = normalizeGridPlacements(homeWidgets, maxRows)
         val occupied = mutableSetOf<Pair<Int, Int>>()
         currentNormalized.forEach { p ->
             for (dr in 0 until p.rowSpan) {
@@ -1506,31 +1631,63 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
 
         val rSpan = type.rowSpan
         val cSpan = type.colSpan.coerceIn(1, 4)
-        var r = 0
-        var foundRow = 0
-        var foundCol = 0
-        var found = false
+        var foundRow = -1
+        var foundCol = -1
 
-        while (!found) {
-            for (c in 0..(4 - cSpan)) {
-                var canFit = true
-                for (dr in 0 until rSpan) {
-                    for (dc in 0 until cSpan) {
-                        if (occupied.contains((r + dr) to (c + dc))) {
-                            canFit = false
-                            break
+        // In modalità a pagine, prova prima ad inserire lo spazio disponibile nella pagina preferita/corrente
+        if (maxRows > 0 && preferredPage >= 0) {
+            val pageStart = preferredPage * maxRows
+            for (localR in 0..(maxRows - rSpan)) {
+                val candidateR = pageStart + localR
+                for (c in 0..(4 - cSpan)) {
+                    var canFit = true
+                    for (dr in 0 until rSpan) {
+                        for (dc in 0 until cSpan) {
+                            if (occupied.contains((candidateR + dr) to (c + dc))) {
+                                canFit = false
+                                break
+                            }
                         }
+                        if (!canFit) break
                     }
-                    if (!canFit) break
+                    if (canFit) {
+                        foundRow = candidateR
+                        foundCol = c
+                        break
+                    }
                 }
-                if (canFit) {
-                    found = true
-                    foundRow = r
-                    foundCol = c
-                    break
-                }
+                if (foundRow >= 0) break
             }
-            if (!found) r++
+        }
+
+        // Se non trovato o in modalità scorrimento infinito, cerca a partire da row 0
+        if (foundRow < 0) {
+            var r = 0
+            var found = false
+            while (!found) {
+                if (maxRows > 0 && (r % maxRows) + rSpan > maxRows) {
+                    r = ((r / maxRows) + 1) * maxRows
+                }
+                for (c in 0..(4 - cSpan)) {
+                    var canFit = true
+                    for (dr in 0 until rSpan) {
+                        for (dc in 0 until cSpan) {
+                            if (occupied.contains((r + dr) to (c + dc))) {
+                                canFit = false
+                                break
+                            }
+                        }
+                        if (!canFit) break
+                    }
+                    if (canFit) {
+                        found = true
+                        foundRow = r
+                        foundCol = c
+                        break
+                    }
+                }
+                if (!found) r++
+            }
         }
 
         val updatedExisting = currentNormalized.map {
@@ -1630,7 +1787,8 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
                 )
             }
         }
-        val normalized = normalizeGridPlacements(loaded).map {
+        val maxRows = if (homeLayoutMode == HomeLayoutMode.PAGED) homeMaxRowsPerPage else 0
+        val normalized = normalizeGridPlacements(loaded, maxRows).map {
             it.widget.copy(gridRow = it.row, gridCol = it.col)
         }
         homeWidgets.addAll(normalized)

@@ -3,6 +3,7 @@ package com.example.closet.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -28,7 +30,9 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun AppUpdateSection(
-    currentVersionName: String
+    currentVersionName: String,
+    autoCheckUpdatesOnStartup: Boolean = true,
+    onToggleAutoCheckUpdates: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -156,6 +160,53 @@ fun AppUpdateSection(
                         Text("Cerca aggiornamenti", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
+            }
+
+            HorizontalDivider(
+                color = colors.cardBorder.copy(alpha = 0.5f),
+                thickness = 0.5.dp
+            )
+
+            // Opzione: Cerca aggiornamenti all'avvio
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onToggleAutoCheckUpdates(!autoCheckUpdatesOnStartup) }
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp)
+                ) {
+                    Text(
+                        text = "Cerca aggiornamenti all'avvio",
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.textPrimary
+                    )
+                    Text(
+                        text = "Controlla automaticamente la presenza di nuove versioni all'apertura dell'app",
+                        fontSize = 12.sp,
+                        color = colors.textMuted,
+                        lineHeight = 16.sp
+                    )
+                }
+
+                Switch(
+                    checked = autoCheckUpdatesOnStartup,
+                    onCheckedChange = { onToggleAutoCheckUpdates(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = colors.accent,
+                        uncheckedThumbColor = colors.textSecondary,
+                        uncheckedTrackColor = colors.surfaceSecondary
+                    ),
+                    modifier = Modifier.scale(0.88f)
+                )
             }
 
             // STATO: App già aggiornata

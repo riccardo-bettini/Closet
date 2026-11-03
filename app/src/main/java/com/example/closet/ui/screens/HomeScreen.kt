@@ -42,6 +42,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PageSize
+import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -57,11 +59,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -69,6 +74,8 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -82,7 +89,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -90,6 +99,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
+import com.example.closet.ui.updater.StartupUpdateDialog
 import com.example.closet.ui.viewmodel.ClosetFolder
 import com.example.closet.ui.viewmodel.ClosetViewModel
 import kotlinx.coroutines.delay
@@ -775,6 +785,20 @@ fun HomeScreen(
     viewModel: ClosetViewModel,
     onAddItemClick: () -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val appVersionName = remember(context) {
+        try {
+            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            packageInfo.versionName ?: "1.0.0"
+        } catch (e: Exception) {
+            "1.0.0"
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.checkForStartupUpdates(appVersionName)
+    }
+
     val coroutineScope = rememberCoroutineScope()
     val (isGlobalTorchOn, toggleGlobalTorch) = rememberTorchState()
 
@@ -801,6 +825,7 @@ fun HomeScreen(
     }
 
     val homeScrollState = rememberScrollState()
+    var homeScrollToTopTrigger by remember { mutableIntStateOf(0) }
     var wardrobeScrollToTopTrigger by remember { mutableIntStateOf(0) }
 
     // Se riduci il numero di schede nell'isola, evita che il pager resti fuori range
@@ -904,6 +929,8 @@ fun HomeScreen(
 
     var isEditMode by remember { mutableStateOf(false) }
     var showWidgetPicker by remember { mutableStateOf(false) }
+    var showHomeOptionsDialog by remember { mutableStateOf(false) }
+    var currentHomePagerPage by remember { mutableIntStateOf(0) }
 
     val today = remember { LocalDate.now() }
 
@@ -995,6 +1022,7 @@ fun HomeScreen(
     val isInFunctionsGridSubScreen = (currentTab == IslandTabType.FUNCTIONS && isFunctionsSubScreenActive)
 
     val shouldInterceptBack = !isInFunctionsGridSubScreen && (
+            showHomeOptionsDialog ||
             isCameraActive ||
                     showDeleteSelectedConfirmDialog ||
                     isWardrobeFunctionInfoOpen ||
@@ -1014,6 +1042,7 @@ fun HomeScreen(
 
     BackHandler(enabled = shouldInterceptBack) {
         when {
+            showHomeOptionsDialog -> showHomeOptionsDialog = false
             isCameraActive -> isCameraActive = false
             isWardrobeFunctionInfoOpen -> isWardrobeFunctionInfoOpen = false
             showDeleteSelectedConfirmDialog -> showDeleteSelectedConfirmDialog = false
@@ -1139,6 +1168,8 @@ fun HomeScreen(
                     onResetAccentColor = { viewModel.resetCustomAccentColor() },
                     useDistinctFunctionColors = viewModel.useDistinctFunctionColors,
                     onToggleDistinctFunctionColors = { viewModel.setDistinctFunctionColors(it) },
+                    autoCheckUpdatesOnStartup = viewModel.autoCheckUpdatesOnStartup,
+                    onToggleAutoCheckUpdates = { viewModel.updateAutoCheckUpdatesOnStartup(it) },
                     islandTabs = viewModel.islandTabs,
                     onSaveIslandTabs = { viewModel.updateIslandTabs(it) },
                     favoriteShortcuts = viewModel.favoriteShortcuts,
@@ -1336,6 +1367,8 @@ fun HomeScreen(
                                 isEditMode = isEditMode,
                                 onEnterEditMode = { isEditMode = true },
                                 scrollState = homeScrollState,
+                                scrollToTopTrigger = homeScrollToTopTrigger,
+                                onPageChanged = { page -> currentHomePagerPage = page },
                                 onRemoveWidget = { widgetId: String -> viewModel.removeWidget(widgetId) },
                                 onMoveWidget = { fromIdx: Int, toIdx: Int -> viewModel.moveWidget(fromIdx, toIdx) },
                                 onUpdateWidgetsLayout = { updatedList ->
@@ -1608,18 +1641,18 @@ fun HomeScreen(
 
                                     currentTab == IslandTabType.HOME -> {
                                         TopActionMenuItem(
-                                            icon = Icons.Default.Add,
+                                            icon = Icons.Outlined.Tune,
                                             iconTint = themeColors.accent,
-                                            title = "Aggiungi widget",
+                                            title = "Opzioni home",
                                             onClick = {
                                                 isTopMenuOpen = false
-                                                showWidgetPicker = true
+                                                showHomeOptionsDialog = true
                                             }
                                         )
                                         TopActionMenuItem(
                                             icon = Icons.Default.DashboardCustomize,
                                             iconTint = themeColors.accent,
-                                            title = if (isEditMode) "Termina modifica" else "Modifica widget",
+                                            title = if (isEditMode) "Termina modifica" else "Modifica home",
                                             onClick = {
                                                 isTopMenuOpen = false
                                                 isEditMode = !isEditMode
@@ -1680,25 +1713,8 @@ fun HomeScreen(
                 }
             }
 
-            // Sfumatura inferiore e Isola di Navigazione
+            // Isola di Navigazione inferiore flottante
             if (!isShowingSettings && !isCameraActive && !isInFunctionsGridSubScreen) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(130.dp)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    themeColors.fadeColorBottom.copy(alpha = 0.55f),
-                                    themeColors.fadeColorBottom.copy(alpha = 0.88f),
-                                    themeColors.fadeColorBottom
-                                )
-                            )
-                        )
-                )
-
                 val showBottomIsland = !(isCurrentlyViewingWardrobe && isWardrobeSearchActive)
                 val islandMode = when {
                     isItemEditMode -> BottomIslandMode.ITEM_EDIT
@@ -1707,13 +1723,21 @@ fun HomeScreen(
                     else -> BottomIslandMode.NORMAL
                 }
 
+                val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                val islandBottomPadding = when {
+                    navBarBottom == 0.dp -> 14.dp
+                    navBarBottom <= 24.dp -> 6.dp
+                    else -> 8.dp
+                }
+                val popupBottomPadding = islandBottomPadding + 54.dp + 6.dp
+
                 AnimatedVisibility(
                     visible = showBottomIsland,
                     enter = fadeIn(animationSpec = tween(280)) + slideInVertically(initialOffsetY = { it / 2 }),
                     exit = fadeOut(animationSpec = tween(280)) + slideOutVertically(targetOffsetY = { it / 2 }),
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 24.dp)
+                        .padding(bottom = islandBottomPadding)
                         .zIndex(30f)
                 ) {
                     Box(contentAlignment = Alignment.BottomCenter) {
@@ -2029,6 +2053,26 @@ fun HomeScreen(
 
                                                 Surface(
                                                     shape = CircleShape,
+                                                    color = themeColors.surfaceSecondary,
+                                                    modifier = Modifier
+                                                        .size(38.dp)
+                                                        .clickable { showHomeOptionsDialog = true }
+                                                ) {
+                                                    Box(
+                                                        contentAlignment = Alignment.Center,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.Tune,
+                                                            contentDescription = "Opzioni home",
+                                                            tint = themeColors.textPrimary,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                Surface(
+                                                    shape = CircleShape,
                                                     color = themeColors.accent,
                                                     modifier = Modifier
                                                         .height(38.dp)
@@ -2063,6 +2107,7 @@ fun HomeScreen(
                                                     } else {
                                                         when (targetTab) {
                                                             IslandTabType.HOME -> {
+                                                                homeScrollToTopTrigger++
                                                                 if (homeScrollState.value > 0) {
                                                                     coroutineScope.launch {
                                                                         homeScrollState.animateScrollTo(0)
@@ -2274,7 +2319,7 @@ fun HomeScreen(
                             ),
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(bottom = 62.dp)
+                                .padding(bottom = popupBottomPadding)
                         ) {
                             FavoriteShortcutsIslandPopup(
                                 shortcuts = viewModel.favoriteShortcuts,
@@ -2354,7 +2399,7 @@ fun HomeScreen(
                             ) + slideOutVertically(targetOffsetY = { it / 3 }),
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(bottom = 62.dp)
+                                .padding(bottom = popupBottomPadding)
                                 .width(220.dp)
                         ) {
                             Surface(
@@ -2438,7 +2483,7 @@ fun HomeScreen(
                             ) + slideOutVertically(targetOffsetY = { it / 3 }),
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(bottom = 62.dp)
+                                .padding(bottom = popupBottomPadding)
                                 .width(165.dp)
                         ) {
                             Surface(
@@ -2758,12 +2803,19 @@ fun HomeScreen(
                 availableClosets = viewModel.availableClosets,
                 onDismiss = { showWidgetPicker = false },
                 onSelectWidget = { widgetType: WidgetType, targetCloset: String? ->
-                    viewModel.addWidget(widgetType, targetCloset)
+                    viewModel.addWidget(widgetType, targetCloset, preferredPage = currentHomePagerPage)
                     if (isEditMode) {
                         originalWidgetsState = viewModel.homeWidgets.toList()
                     }
                     showWidgetPicker = false
                 }
+            )
+        }
+
+        if (showHomeOptionsDialog) {
+            HomeOptionsDialog(
+                viewModel = viewModel,
+                onDismiss = { showHomeOptionsDialog = false }
             )
         }
 
@@ -2790,6 +2842,13 @@ fun HomeScreen(
                 }
             )
         }
+
+        viewModel.startupUpdateRelease?.let { release ->
+            StartupUpdateDialog(
+                release = release,
+                onDismiss = { viewModel.dismissStartupUpdateDialog() }
+            )
+        }
     }
 }
 
@@ -2805,6 +2864,8 @@ fun HomeDashboardGrid(
     isEditMode: Boolean,
     onEnterEditMode: () -> Unit = {},
     scrollState: ScrollState = rememberScrollState(),
+    scrollToTopTrigger: Int = 0,
+    onPageChanged: (Int) -> Unit = {},
     onRemoveWidget: (String) -> Unit,
     onMoveWidget: (Int, Int) -> Unit,
     onUpdateWidgetsLayout: (List<PlacedWidget>) -> Unit = {},
@@ -2812,9 +2873,11 @@ fun HomeDashboardGrid(
     onWidgetClick: (PlacedWidget) -> Unit
 ) {
     val colors = LocalOneUIColors.current
+    val density = LocalDensity.current
     val horizontalPadding = 16.dp
     val spacing = 12.dp
     var viewportHeightPx by remember { mutableFloatStateOf(0f) }
+    val coroutineScope = rememberCoroutineScope()
 
     val emptySpaceGestureModifier = if (!isEditMode) {
         Modifier.pointerInput(isEditMode) {
@@ -2826,55 +2889,252 @@ fun HomeDashboardGrid(
         }
     } else Modifier
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .onSizeChanged { size ->
-                viewportHeightPx = size.height.toFloat()
+    if (viewModel.homeLayoutMode == HomeLayoutMode.PAGED) {
+        val maxRows = viewModel.homeMaxRowsPerPage
+        val highestOccupiedRow = if (widgets.isEmpty()) 0 else widgets.maxOf { it.gridRow.coerceAtLeast(0) + it.type.rowSpan }
+        val occupiedPages = if (highestOccupiedRow <= 0) 1 else ((highestOccupiedRow - 1) / maxRows + 1)
+        val pageCount = if (isEditMode) occupiedPages + 1 else occupiedPages
+        val verticalPagerState = rememberPagerState(initialPage = 0, pageCount = { pageCount })
+
+        LaunchedEffect(verticalPagerState.currentPage) {
+            onPageChanged(verticalPagerState.currentPage)
+        }
+
+        LaunchedEffect(scrollToTopTrigger) {
+            if (scrollToTopTrigger > 0 && verticalPagerState.currentPage > 0) {
+                verticalPagerState.animateScrollToPage(0)
             }
-            .then(emptySpaceGestureModifier)
-    ) {
-        BoxWithConstraints(
+        }
+
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(scrollState)
+                .onSizeChanged { size -> viewportHeightPx = size.height.toFloat() }
                 .then(emptySpaceGestureModifier)
-                .padding(start = horizontalPadding, end = horizontalPadding, top = 20.dp, bottom = 150.dp)
         ) {
-            val availableWidth = maxWidth - (spacing * 3)
-            val unitCellSize: Dp = availableWidth / 4
-
-            Column(
+            // Header superiore: Titolo Home / Modifica home
+            AnimatedContent(
+                targetState = isEditMode,
+                transitionSpec = {
+                    (fadeIn(animationSpec = tween(220, delayMillis = 40)) + slideInVertically { it / 3 })
+                        .togetherWith(fadeOut(animationSpec = tween(160)) + slideOutVertically { -it / 3 })
+                },
+                label = "homePagedTitleAnim",
                 modifier = Modifier
+                    .align(Alignment.TopCenter)
                     .fillMaxWidth()
+                    .padding(start = horizontalPadding, top = 18.dp, end = 70.dp)
+                    .zIndex(20f)
+            ) { editMode ->
+                Text(
+                    text = if (editMode) "Modifica home" else "Home",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = colors.textPrimary,
+                    letterSpacing = 0.5.sp,
+                    modifier = Modifier.pointerInput(Unit) {
+                        detectTapGestures(onLongPress = { })
+                    }
+                )
+            }
+
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = horizontalPadding, end = horizontalPadding)
                     .then(emptySpaceGestureModifier)
             ) {
-                AnimatedContent(
-                    targetState = isEditMode,
-                    transitionSpec = {
-                        (fadeIn(tween(220)) + slideInVertically { -it / 3 }) togetherWith
-                                (fadeOut(tween(160)) + slideOutVertically { it / 3 })
-                    },
-                    label = "homeTitleAnim"
-                ) { editMode ->
-                    Row(
+                val availableWidth = maxWidth - (spacing * 3)
+                val unitCellSize: Dp = availableWidth / 4
+
+                val pageContentHeight = (unitCellSize * maxRows) + (spacing * (maxRows - 1))
+                val topHeaderHeight = 64.dp
+                val minPeek = unitCellSize + spacing
+                val bottomPeekHeight = maxOf(maxHeight - topHeaderHeight - pageContentHeight, minPeek)
+
+                val customPageSize = remember(pageContentHeight) {
+                    object : PageSize {
+                        override fun Density.calculateMainAxisPageSize(availableSpace: Int, pageSpacing: Int): Int {
+                            return pageContentHeight.roundToPx()
+                        }
+                    }
+                }
+
+                VerticalPager(
+                    state = verticalPagerState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                        .drawWithContent {
+                            drawContent()
+                            val topFadePx = 70.dp.toPx()
+                            val bottomFadePx = 130.dp.toPx()
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    colorStops = arrayOf(
+                                        0f to Color.Transparent,
+                                        (topFadePx / size.height).coerceIn(0f, 1f) to Color.Black,
+                                        ((size.height - bottomFadePx) / size.height).coerceIn(0f, 1f) to Color.Black,
+                                        1f to Color.Transparent
+                                    )
+                                ),
+                                blendMode = BlendMode.DstIn
+                            )
+                        },
+                    pageSize = customPageSize,
+                    pageSpacing = spacing,
+                    contentPadding = PaddingValues(top = topHeaderHeight, bottom = bottomPeekHeight),
+                    userScrollEnabled = true,
+                    beyondViewportPageCount = 2
+                ) { pageIndex ->
+                    val pageStartRow = pageIndex * maxRows
+                    val pageEndRow = pageStartRow + maxRows
+                    val pageWidgets = widgets.filter { w ->
+                        val r = w.gridRow.coerceAtLeast(0)
+                        r in pageStartRow until pageEndRow
+                    }.map { w ->
+                        w.copy(gridRow = w.gridRow - pageStartRow)
+                    }
+
+                    val dummyScrollState = rememberScrollState(0)
+
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp)
-                            .pointerInput(Unit) {
-                                detectTapGestures(onLongPress = { })
-                            },
-                        verticalAlignment = Alignment.CenterVertically
+                            .fillMaxSize()
+                            .then(emptySpaceGestureModifier),
+                        contentAlignment = Alignment.TopCenter
                     ) {
-                        Text(
-                            text = if (editMode) "Modifica widget" else "Home",
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = colors.textPrimary,
-                            letterSpacing = 0.5.sp
+                        FlowWidgetLayout(
+                            viewModel = viewModel,
+                            widgets = pageWidgets,
+                            useDistinctColors = useDistinctColors,
+                            unitCellSize = unitCellSize,
+                            spacing = spacing,
+                            isEditMode = isEditMode,
+                            onEnterEditMode = onEnterEditMode,
+                            scrollState = dummyScrollState,
+                            viewportHeightPx = viewportHeightPx,
+                            fixedRows = maxRows,
+                            pageIndex = pageIndex,
+                            totalPageCount = pageCount,
+                            onRequestPageChange = { targetP ->
+                                coroutineScope.launch {
+                                    verticalPagerState.animateScrollToPage(targetP)
+                                }
+                            },
+                            onRemoveWidget = onRemoveWidget,
+                            onUpdateWidgetsLayout = { updatedPageWidgets, destPageIndex, movedWidgetId ->
+                                val otherWidgets = widgets.filter { w ->
+                                    val r = w.gridRow.coerceAtLeast(0)
+                                    r !in pageStartRow until pageEndRow
+                                }
+                                if (destPageIndex == pageIndex || movedWidgetId == null) {
+                                    val mappedBack = updatedPageWidgets.map { w ->
+                                        w.copy(gridRow = pageStartRow + w.gridRow)
+                                    }
+                                    onUpdateWidgetsLayout(otherWidgets + mappedBack)
+                                } else {
+                                    val destStartRow = destPageIndex * maxRows
+                                    val movedWidget = updatedPageWidgets.find { it.instanceId == movedWidgetId }
+                                    val remainingOnThisPage = updatedPageWidgets.filter { it.instanceId != movedWidgetId }.map {
+                                        it.copy(gridRow = pageStartRow + it.gridRow)
+                                    }
+                                    val relocated = movedWidget?.copy(gridRow = destStartRow + movedWidget.gridRow)
+                                    val otherClean = otherWidgets.filter { it.instanceId != movedWidgetId }
+                                    val combined = otherClean + remainingOnThisPage + listOfNotNull(relocated)
+                                    onUpdateWidgetsLayout(combined)
+                                }
+                            },
+                            onNavigateFunction = onNavigateFunction,
+                            onWidgetClick = onWidgetClick
                         )
                     }
                 }
+            }
+
+            VerticalPageIndicator(
+                pageCount = pageCount,
+                currentPage = verticalPagerState.currentPage,
+                visibility = viewModel.homePageIndicatorVisibility,
+                position = viewModel.homePageIndicatorPosition,
+                isScrollInProgress = verticalPagerState.isScrollInProgress,
+                isEditMode = isEditMode,
+                onPageClick = { targetP ->
+                    coroutineScope.launch {
+                        verticalPagerState.animateScrollToPage(targetP)
+                    }
+                }
+            )
+        }
+    } else {
+        // SCORRIMENTO CONTINUO
+        LaunchedEffect(scrollToTopTrigger) {
+            if (scrollToTopTrigger > 0 && scrollState.value > 0) {
+                scrollState.animateScrollTo(0)
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onSizeChanged { size ->
+                    viewportHeightPx = size.height.toFloat()
+                }
+                .then(emptySpaceGestureModifier)
+        ) {
+            // Header superiore: Titolo Home / Modifica home
+            AnimatedContent(
+                targetState = isEditMode,
+                transitionSpec = {
+                    (fadeIn(animationSpec = tween(220, delayMillis = 40)) + slideInVertically { it / 3 })
+                        .togetherWith(fadeOut(animationSpec = tween(160)) + slideOutVertically { -it / 3 })
+                },
+                label = "homeTitleAnim",
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .padding(start = horizontalPadding, top = 18.dp, end = 70.dp)
+                    .zIndex(20f)
+            ) { editMode ->
+                Text(
+                    text = if (editMode) "Modifica home" else "Home",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = colors.textPrimary,
+                    letterSpacing = 0.5.sp,
+                    modifier = Modifier.pointerInput(Unit) {
+                        detectTapGestures(onLongPress = { })
+                    }
+                )
+            }
+
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = horizontalPadding, end = horizontalPadding)
+                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                    .drawWithContent {
+                        drawContent()
+                        val topFadePx = 70.dp.toPx()
+                        val bottomFadePx = 110.dp.toPx()
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0f to Color.Transparent,
+                                    (topFadePx / size.height).coerceIn(0f, 1f) to Color.Black,
+                                    ((size.height - bottomFadePx) / size.height).coerceIn(0f, 1f) to Color.Black,
+                                    1f to Color.Transparent
+                                )
+                            ),
+                            blendMode = BlendMode.DstIn
+                        )
+                    }
+                    .verticalScroll(scrollState)
+                    .then(emptySpaceGestureModifier)
+                    .padding(top = 64.dp, bottom = 80.dp)
+            ) {
+                val availableWidth = maxWidth - (spacing * 3)
+                val unitCellSize: Dp = availableWidth / 4
 
                 FlowWidgetLayout(
                     viewModel = viewModel,
@@ -2886,41 +3146,16 @@ fun HomeDashboardGrid(
                     onEnterEditMode = onEnterEditMode,
                     scrollState = scrollState,
                     viewportHeightPx = viewportHeightPx,
+                    fixedRows = 0,
                     onRemoveWidget = onRemoveWidget,
-                    onUpdateWidgetsLayout = onUpdateWidgetsLayout,
+                    onUpdateWidgetsLayout = { updatedWidgets, _, _ ->
+                        onUpdateWidgetsLayout(updatedWidgets)
+                    },
                     onNavigateFunction = onNavigateFunction,
                     onWidgetClick = onWidgetClick
                 )
             }
         }
-
-        val density = LocalDensity.current
-        val topFadeColor = when {
-            viewModel.currentTheme == AppTheme.AMOLED -> Color(0xFF000000)
-            colors.isDark -> Color(0xFF13171E)
-            else -> Color(0xFFF2F4F8)
-        }
-        val topFadeProgress = (scrollState.value.toFloat() / with(density) { 24.dp.toPx() }).coerceIn(0f, 1f)
-
-        // SFUMATURA SUPERIORE IN USCITA
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .height(42.dp)
-                .graphicsLayer { alpha = topFadeProgress }
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            topFadeColor,
-                            topFadeColor.copy(alpha = 0.85f),
-                            topFadeColor.copy(alpha = 0.40f),
-                            Color.Transparent
-                        )
-                    )
-                )
-                .zIndex(15f)
-        )
     }
 }
 
@@ -2935,8 +3170,12 @@ fun FlowWidgetLayout(
     onEnterEditMode: () -> Unit = {},
     scrollState: ScrollState,
     viewportHeightPx: Float = 0f,
+    fixedRows: Int = 0,
+    pageIndex: Int = 0,
+    totalPageCount: Int = 1,
+    onRequestPageChange: (Int) -> Unit = {},
     onRemoveWidget: (String) -> Unit,
-    onUpdateWidgetsLayout: (List<PlacedWidget>) -> Unit,
+    onUpdateWidgetsLayout: (List<PlacedWidget>, destinationPageIndex: Int, movedWidgetId: String?) -> Unit,
     onNavigateFunction: (FunctionSubScreen) -> Unit = {},
     onWidgetClick: (PlacedWidget) -> Unit
 ) {
@@ -2946,7 +3185,7 @@ fun FlowWidgetLayout(
     val spacingPx = with(density) { spacing.toPx() }
     val cellStepPx = unitCellSizePx + spacingPx
     val cellStepDp = unitCellSize + spacing
-    val headerOffsetPx = with(density) { 72.dp.toPx() }
+    val headerOffsetPx = if (fixedRows > 0) 0f else with(density) { 72.dp.toPx() }
     val removeZonePx = with(density) { 36.dp.toPx() }
     val resizeZonePx = with(density) { 44.dp.toPx() }
     val tapSlopPx = with(density) { 10.dp.toPx() }
@@ -2968,6 +3207,9 @@ fun FlowWidgetLayout(
     var dragTouchOffsetY by remember { mutableFloatStateOf(0f) }
     var dragFingerCurrentX by remember { mutableFloatStateOf(0f) }
     var dragFingerCurrentY by remember { mutableFloatStateOf(0f) }
+    var currentTargetPage by remember(pageIndex) { mutableIntStateOf(pageIndex) }
+    var lastEdgeHoverTime by remember { mutableLongStateOf(0L) }
+    var edgeHoverDirection by remember { mutableIntStateOf(0) }
 
     // Stato ridimensionamento (Cursore angolo in basso a destra stile One UI 9)
     var resizingWidgetId by remember { mutableStateOf<String?>(null) }
@@ -2999,6 +3241,9 @@ fun FlowWidgetLayout(
             dragTouchOffsetY = 0f
             dragFingerCurrentX = 0f
             dragFingerCurrentY = 0f
+            currentTargetPage = pageIndex
+            lastEdgeHoverTime = 0L
+            edgeHoverDirection = 0
             resizingWidgetId = null
             resizePreviewType = null
         }
@@ -3028,18 +3273,21 @@ fun FlowWidgetLayout(
         }
     }
 
-    val originalPlacements = remember(effectiveWidgets, unitCellSizePx, spacingPx) {
-        normalizeGridPlacements(effectiveWidgets)
+    val coroutineScope = rememberCoroutineScope()
+
+    val originalPlacements = remember(effectiveWidgets, unitCellSizePx, spacingPx, fixedRows) {
+        normalizeGridPlacements(effectiveWidgets, maxRowsPerPage = fixedRows)
     }
 
-    val virtualPlacements = remember(originalPlacements, draggedWidgetId, targetHoverRow, targetHoverCol) {
+    val virtualPlacements = remember(originalPlacements, draggedWidgetId, targetHoverRow, targetHoverCol, fixedRows) {
         val activeDragId = draggedWidgetId
         if (activeDragId != null && targetHoverRow >= 0 && targetHoverCol >= 0) {
             resolveMatrixDragLayout(
                 basePlacements = originalPlacements,
                 draggedId = activeDragId,
                 targetRow = targetHoverRow,
-                targetCol = targetHoverCol
+                targetCol = targetHoverCol,
+                maxRowsPerPage = fixedRows
             )
         } else {
             originalPlacements
@@ -3053,58 +3301,91 @@ fun FlowWidgetLayout(
     val currentVirtualPlacements by rememberUpdatedState(virtualPlacements)
     val currentOriginalPlacements by rememberUpdatedState(originalPlacements)
 
-    // Auto-scroll continuo e fluido quando il dito raggiunge i bordi superiore o inferiore (identico a FunctionsScreen)
+    // Auto-scroll continuo in modalità infinita oppure cambio pagina ai bordi in modalità a pagine
     LaunchedEffect(draggedWidgetId) {
         if (draggedWidgetId == null) return@LaunchedEffect
-        val topScrollZonePx = with(density) { 110.dp.toPx() }
-        val bottomScrollZonePx = with(density) { 150.dp.toPx() }
-        val maxScrollStepPx = with(density) { 12.dp.toPx() }
+        if (fixedRows <= 0) {
+            val topScrollZonePx = with(density) { 110.dp.toPx() }
+            val bottomScrollZonePx = with(density) { 150.dp.toPx() }
+            val maxScrollStepPx = with(density) { 14.dp.toPx() }
 
-        while (draggedWidgetId != null) {
-            if (viewportHeightPx > 0f) {
-                val fingerY = dragFingerCurrentY
-                val topZone = topScrollZonePx
-                val bottomZone = viewportHeightPx - bottomScrollZonePx
+            while (draggedWidgetId != null) {
+                if (viewportHeightPx > 0f) {
+                    val fingerY = dragFingerCurrentY
+                    val topZone = topScrollZonePx
+                    val bottomZone = viewportHeightPx - bottomScrollZonePx
 
-                val scrollDelta: Float = when {
-                    fingerY < topZone && scrollState.value > 0 -> {
-                        val factor = ((topZone - fingerY) / topZone).coerceIn(0.2f, 1f)
-                        -maxScrollStepPx * factor
-                    }
-                    fingerY > bottomZone && scrollState.value < scrollState.maxValue -> {
-                        val factor = ((fingerY - bottomZone) / bottomScrollZonePx).coerceIn(0.2f, 1f)
-                        maxScrollStepPx * factor
-                    }
-                    else -> 0f
-                }
-
-                if (scrollDelta != 0f) {
-                    val targetScroll = (scrollState.value + scrollDelta.roundToInt()).coerceIn(0, scrollState.maxValue)
-                    if (targetScroll != scrollState.value) {
-                        scrollState.scrollTo(targetScroll)
-                        val currentCardTopPx = dragFingerCurrentY + scrollState.value - headerOffsetPx - dragTouchOffsetY
-                        val rawRow = currentCardTopPx / cellStepPx
-                        val prevRow = targetHoverRow.coerceAtLeast(0)
-                        val maxAllowedRow = maxOf(
-                            9,
-                            (currentOriginalPlacements.maxOfOrNull { it.row + it.rowSpan } ?: 0) + 1
-                        )
-                        val newRow = if (abs(rawRow - prevRow) > 0.55f) {
-                            rawRow.roundToInt().coerceIn(0, maxAllowedRow)
-                        } else {
-                            prevRow.coerceIn(0, maxAllowedRow)
+                    val scrollDelta: Float = when {
+                        fingerY < topZone && scrollState.value > 0 -> {
+                            val factor = ((topZone - fingerY) / topZone).coerceIn(0.2f, 1f)
+                            -maxScrollStepPx * factor
                         }
-                        if (newRow != targetHoverRow) {
-                            targetHoverRow = newRow
+                        fingerY > bottomZone && scrollState.value < scrollState.maxValue -> {
+                            val factor = ((fingerY - bottomZone) / bottomScrollZonePx).coerceIn(0.2f, 1f)
+                            maxScrollStepPx * factor
+                        }
+                        else -> 0f
+                    }
+
+                    if (scrollDelta != 0f) {
+                        val targetScroll = (scrollState.value + scrollDelta.roundToInt()).coerceIn(0, scrollState.maxValue)
+                        if (targetScroll != scrollState.value) {
+                            scrollState.scrollTo(targetScroll)
+                            val currentCardTopPx = dragFingerCurrentY + scrollState.value - headerOffsetPx - dragTouchOffsetY
+                            val rawRow = currentCardTopPx / cellStepPx
+                            val prevRow = targetHoverRow.coerceAtLeast(0)
+                            val maxAllowedRow = maxOf(
+                                9,
+                                (currentOriginalPlacements.maxOfOrNull { it.row + it.rowSpan } ?: 0) + 1
+                            )
+                            val newRow = if (abs(rawRow - prevRow) > 0.55f) {
+                                rawRow.roundToInt().coerceIn(0, maxAllowedRow)
+                            } else {
+                                prevRow.coerceIn(0, maxAllowedRow)
+                            }
+                            if (newRow != targetHoverRow) {
+                                targetHoverRow = newRow
+                            }
                         }
                     }
                 }
+                delay(16)
             }
-            delay(16)
+        } else {
+            val topEdgeZonePx = with(density) { 90.dp.toPx() }
+            val bottomEdgeZonePx = viewportHeightPx - with(density) { 110.dp.toPx() }
+
+            while (draggedWidgetId != null) {
+                val fingerY = dragFingerCurrentY
+                val dir = when {
+                    fingerY > 0f && fingerY < topEdgeZonePx -> -1
+                    fingerY > bottomEdgeZonePx && viewportHeightPx > 0f -> 1
+                    else -> 0
+                }
+
+                if (dir != 0) {
+                    val now = System.currentTimeMillis()
+                    if (dir != edgeHoverDirection) {
+                        edgeHoverDirection = dir
+                        lastEdgeHoverTime = now
+                    } else if (now - lastEdgeHoverTime >= 400L) {
+                        val targetP = (currentTargetPage + dir).coerceIn(0, totalPageCount - 1)
+                        if (targetP != currentTargetPage) {
+                            currentTargetPage = targetP
+                            onRequestPageChange(targetP)
+                            lastEdgeHoverTime = now + 450L
+                        }
+                    }
+                } else {
+                    edgeHoverDirection = 0
+                    lastEdgeHoverTime = 0L
+                }
+                delay(30)
+            }
         }
     }
 
-    val maxRow = maxOf(
+    val maxRow = if (fixedRows > 0) fixedRows else maxOf(
         virtualPlacements.maxOfOrNull { it.row + it.rowSpan } ?: 0,
         originalPlacements.maxOfOrNull { it.row + it.rowSpan } ?: 0,
         if (isEditMode) 10 else 0
@@ -3114,7 +3395,7 @@ fun FlowWidgetLayout(
     } else 0.dp
 
     val editModeSpringScale by animateFloatAsState(
-        targetValue = if (isEditMode) 0.97f else 1f,
+        targetValue = if (isEditMode) 0.935f else 0.97f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMediumLow
@@ -3238,10 +3519,10 @@ fun FlowWidgetLayout(
 
                     val cardScale by animateFloatAsState(
                         targetValue = when {
-                            isDragged -> 1.045f
-                            isResizing -> 1.02f
-                            isEditMode -> 0.97f
-                            else -> 1f
+                            isDragged -> 1.02f
+                            isResizing -> 0.98f
+                            isEditMode -> 0.935f
+                            else -> 0.97f
                         },
                         animationSpec = spring(
                             stiffness = Spring.StiffnessMediumLow,
@@ -3307,9 +3588,13 @@ fun FlowWidgetLayout(
                                     awaitEachGesture {
                                         val down = awaitFirstDown(requireUnconsumed = false)
 
+                                        val is1x1 = currentOrigPlacement.rowSpan == 1 && currentOrigPlacement.colSpan == 1
+                                        val effectiveResizeZonePx = if (is1x1) with(density) { 20.dp.toPx() } else with(density) { 24.dp.toPx() }
+                                        val effectiveRemoveZonePx = if (is1x1) with(density) { 22.dp.toPx() } else with(density) { 28.dp.toPx() }
+
                                         // 1. Tasto Rimuovi (-) stile iOS in alto a sinistra (TopStart)
-                                        val isOnRemoveButton = down.position.x <= removeZonePx &&
-                                            down.position.y <= removeZonePx
+                                        val isOnRemoveButton = down.position.x <= effectiveRemoveZonePx &&
+                                            down.position.y <= effectiveRemoveZonePx
 
                                         if (isOnRemoveButton) {
                                             down.consume()
@@ -3321,10 +3606,10 @@ fun FlowWidgetLayout(
                                             return@awaitEachGesture
                                         }
 
-                                        // 2. Cursore di ridimensionamento in basso a destra stile iOS
+                                        // 2. Cursore di ridimensionamento in basso a destra stile iOS (più preciso per evitare falsi tocchi)
                                         val isOnResizeHandle = canResize &&
-                                            down.position.x >= (size.width - resizeZonePx) &&
-                                            down.position.y >= (size.height - resizeZonePx)
+                                            down.position.x >= (size.width - effectiveResizeZonePx) &&
+                                            down.position.y >= (size.height - effectiveResizeZonePx)
 
                                         if (isOnResizeHandle && draggedWidgetId == null && resizingWidgetId == null) {
                                             down.consume()
@@ -3388,7 +3673,7 @@ fun FlowWidgetLayout(
 
                                                 workingWidgets.clear()
                                                 workingWidgets.addAll(normalized)
-                                                currentOnUpdateLayout(normalized)
+                                                currentOnUpdateLayout(normalized, pageIndex, null)
                                             }
 
                                             resizingWidgetId = null
@@ -3437,10 +3722,14 @@ fun FlowWidgetLayout(
                                                             prevCol.coerceIn(0, 4 - startP.colSpan)
                                                         }
 
-                                                        val maxAllowedRow = maxOf(
-                                                            9,
-                                                            (currentOriginalPlacements.maxOfOrNull { it.row + it.rowSpan } ?: 0) + 1
-                                                        )
+                                                        val maxAllowedRow = if (fixedRows > 0) {
+                                                            (fixedRows - startP.rowSpan).coerceAtLeast(0)
+                                                        } else {
+                                                            maxOf(
+                                                                9,
+                                                                (currentOriginalPlacements.maxOfOrNull { it.row + it.rowSpan } ?: 0) + 1
+                                                            )
+                                                        }
                                                         val newRow = if (abs(rawRow - prevRow) > 0.55f) {
                                                             rawRow.roundToInt().coerceIn(0, maxAllowedRow)
                                                         } else {
@@ -3465,7 +3754,7 @@ fun FlowWidgetLayout(
 
                                                 workingWidgets.clear()
                                                 workingWidgets.addAll(updatedWidgets)
-                                                currentOnUpdateLayout(updatedWidgets)
+                                                currentOnUpdateLayout(updatedWidgets, currentTargetPage, widget.instanceId)
                                             }
 
                                             draggedWidgetId = null

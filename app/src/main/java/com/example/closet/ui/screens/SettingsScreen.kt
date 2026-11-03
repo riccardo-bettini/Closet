@@ -175,6 +175,8 @@ fun SettingsScreen(
     onResetAccentColor: () -> Unit,
     useDistinctFunctionColors: Boolean,
     onToggleDistinctFunctionColors: (Boolean) -> Unit,
+    autoCheckUpdatesOnStartup: Boolean = true,
+    onToggleAutoCheckUpdates: (Boolean) -> Unit = {},
     islandTabs: List<IslandTabType> = listOf(IslandTabType.HOME, IslandTabType.WARDROBE, IslandTabType.FUNCTIONS),
     onSaveIslandTabs: (List<IslandTabType>) -> Unit = {},
     favoriteShortcuts: List<PlacedFavoriteShortcut> = emptyList(),
@@ -601,7 +603,9 @@ fun SettingsScreen(
                     }
 
                     AppUpdateSection(
-                        currentVersionName = appVersionName
+                        currentVersionName = appVersionName,
+                        autoCheckUpdatesOnStartup = autoCheckUpdatesOnStartup,
+                        onToggleAutoCheckUpdates = onToggleAutoCheckUpdates
                     )
 
                     // =====================================================

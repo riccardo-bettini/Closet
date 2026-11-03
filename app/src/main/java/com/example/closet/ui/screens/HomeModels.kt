@@ -96,6 +96,22 @@ enum class NavigationSection {
     SETTINGS
 }
 
+enum class HomeLayoutMode {
+    INFINITE_SCROLL,
+    PAGED
+}
+
+enum class PageIndicatorVisibility {
+    NEVER,
+    ON_SCROLL,
+    ALWAYS
+}
+
+enum class PageIndicatorPosition {
+    RIGHT,
+    LEFT
+}
+
 // =========================================================================
 // MAPPING TRA ISLAND TAB TYPE E FUNCTION SUB SCREEN
 // =========================================================================
@@ -349,9 +365,15 @@ fun canFitInMatrix(
     row: Int,
     col: Int,
     rowSpan: Int,
-    colSpan: Int
+    colSpan: Int,
+    maxRowsPerPage: Int = 0
 ): Boolean {
     if (row < 0 || col < 0 || col + colSpan > 4) return false
+    if (maxRowsPerPage > 0) {
+        val startPage = row / maxRowsPerPage
+        val endPage = (row + rowSpan - 1) / maxRowsPerPage
+        if (startPage != endPage) return false
+    }
     for (dr in 0 until rowSpan) {
         for (dc in 0 until colSpan) {
             if (occupied.contains((row + dr) to (col + dc))) return false
@@ -374,35 +396,74 @@ fun markMatrixOccupied(
     }
 }
 
-fun compactEmptyMatrixRows(placements: List<WidgetPlacement>): List<WidgetPlacement> {
+fun compactEmptyMatrixRows(placements: List<WidgetPlacement>, maxRowsPerPage: Int = 0): List<WidgetPlacement> {
     if (placements.isEmpty()) return emptyList()
-    val maxRow = placements.maxOf { it.row + it.rowSpan }
-    val rowHasContent = BooleanArray(maxRow + 1)
-    for (p in placements) {
-        for (r in p.row until (p.row + p.rowSpan)) {
-            if (r in rowHasContent.indices) rowHasContent[r] = true
+    if (maxRowsPerPage <= 0) {
+        val maxRow = placements.maxOf { it.row + it.rowSpan }
+        val rowHasContent = BooleanArray(maxRow + 1)
+        for (p in placements) {
+            for (r in p.row until (p.row + p.rowSpan)) {
+                if (r in rowHasContent.indices) rowHasContent[r] = true
+            }
         }
-    }
 
-    val rowMapping = IntArray(maxRow + 1)
-    var currentCompactRow = 0
-    for (r in 0..maxRow) {
-        rowMapping[r] = currentCompactRow
-        if (rowHasContent[r]) {
-            currentCompactRow++
+        val rowMapping = IntArray(maxRow + 1)
+        var currentCompactRow = 0
+        for (r in 0..maxRow) {
+            rowMapping[r] = currentCompactRow
+            if (rowHasContent[r]) {
+                currentCompactRow++
+            }
         }
-    }
 
-    return placements.map { p ->
-        val newRow = rowMapping[p.row]
-        p.copy(
-            row = newRow,
-            widget = p.widget.copy(gridRow = newRow, gridCol = p.col)
-        )
+        return placements.map { p ->
+            val newRow = rowMapping[p.row]
+            p.copy(
+                row = newRow,
+                widget = p.widget.copy(gridRow = newRow, gridCol = p.col)
+            )
+        }
+    } else {
+        // Compatta riga per riga all'interno della stessa pagina senza mai mischiare o unire pagine
+        val pages = placements.groupBy { it.row / maxRowsPerPage }
+        val result = mutableListOf<WidgetPlacement>()
+        val sortedPageKeys = pages.keys.sorted()
+        sortedPageKeys.forEachIndexed { newPageIndex, oldPageIndex ->
+            val pagePlacements = pages[oldPageIndex] ?: emptyList()
+            val pageStartRow = newPageIndex * maxRowsPerPage
+            val oldPageStartRow = oldPageIndex * maxRowsPerPage
+            val localHasContent = BooleanArray(maxRowsPerPage)
+            for (p in pagePlacements) {
+                val localStart = (p.row - oldPageStartRow).coerceIn(0, maxRowsPerPage - 1)
+                for (r in localStart until minOf(maxRowsPerPage, localStart + p.rowSpan)) {
+                    localHasContent[r] = true
+                }
+            }
+            val localMapping = IntArray(maxRowsPerPage)
+            var currentCompactLocal = 0
+            for (r in 0 until maxRowsPerPage) {
+                localMapping[r] = currentCompactLocal
+                if (localHasContent[r]) {
+                    currentCompactLocal++
+                }
+            }
+            pagePlacements.forEach { p ->
+                val localStart = (p.row - oldPageStartRow).coerceIn(0, maxRowsPerPage - 1)
+                val newLocalRow = localMapping[localStart]
+                val newGlobalRow = pageStartRow + newLocalRow
+                result.add(
+                    p.copy(
+                        row = newGlobalRow,
+                        widget = p.widget.copy(gridRow = newGlobalRow, gridCol = p.col)
+                    )
+                )
+            }
+        }
+        return result
     }
 }
 
-fun normalizeGridPlacements(widgets: List<PlacedWidget>): List<WidgetPlacement> {
+fun normalizeGridPlacements(widgets: List<PlacedWidget>, maxRowsPerPage: Int = 0): List<WidgetPlacement> {
     if (widgets.isEmpty()) return emptyList()
     val placements = mutableListOf<WidgetPlacement>()
     val occupied = mutableSetOf<Pair<Int, Int>>()
@@ -413,7 +474,7 @@ fun normalizeGridPlacements(widgets: List<PlacedWidget>): List<WidgetPlacement> 
         val prefRow = w.gridRow
         val prefCol = w.gridCol.coerceIn(0, 4 - cSpan)
 
-        if (prefRow >= 0 && w.gridCol >= 0 && canFitInMatrix(occupied, prefRow, prefCol, rSpan, cSpan)) {
+        if (prefRow >= 0 && w.gridCol >= 0 && canFitInMatrix(occupied, prefRow, prefCol, rSpan, cSpan, maxRowsPerPage)) {
             markMatrixOccupied(occupied, prefRow, prefCol, rSpan, cSpan)
             placements.add(
                 WidgetPlacement(
@@ -431,13 +492,16 @@ fun normalizeGridPlacements(widgets: List<PlacedWidget>): List<WidgetPlacement> 
             var found = false
 
             while (!found) {
+                if (maxRowsPerPage > 0 && (r % maxRowsPerPage) + rSpan > maxRowsPerPage) {
+                    r = ((r / maxRowsPerPage) + 1) * maxRowsPerPage
+                }
                 val candidateCols = if (w.gridCol >= 0) {
                     listOf(prefCol) + (0..(4 - cSpan)).filter { it != prefCol }
                 } else {
                     (0..(4 - cSpan)).toList()
                 }
                 for (c in candidateCols) {
-                    if (canFitInMatrix(occupied, r, c, rSpan, cSpan)) {
+                    if (canFitInMatrix(occupied, r, c, rSpan, cSpan, maxRowsPerPage)) {
                         found = true
                         foundRow = r
                         foundCol = c
@@ -460,7 +524,7 @@ fun normalizeGridPlacements(widgets: List<PlacedWidget>): List<WidgetPlacement> 
         }
     }
 
-    return compactEmptyMatrixRows(placements)
+    return compactEmptyMatrixRows(placements, maxRowsPerPage)
 }
 
 fun calculateGridPlacements(widgets: List<PlacedWidget>): List<WidgetPlacement> =
@@ -477,13 +541,22 @@ fun resolveMatrixDragLayout(
     basePlacements: List<WidgetPlacement>,
     draggedId: String,
     targetRow: Int,
-    targetCol: Int
+    targetCol: Int,
+    maxRowsPerPage: Int = 0
 ): List<WidgetPlacement> {
     val pDrag = basePlacements.find { it.widget.instanceId == draggedId } ?: return basePlacements
     val dRowSpan = pDrag.rowSpan
     val dColSpan = pDrag.colSpan
     val safeCol = targetCol.coerceIn(0, 4 - dColSpan)
-    val safeRow = targetRow.coerceAtLeast(0)
+    var safeRow = targetRow.coerceAtLeast(0)
+
+    if (maxRowsPerPage > 0) {
+        val page = safeRow / maxRowsPerPage
+        val localRow = safeRow % maxRowsPerPage
+        if (localRow + dRowSpan > maxRowsPerPage) {
+            safeRow = page * maxRowsPerPage + (maxRowsPerPage - dRowSpan).coerceAtLeast(0)
+        }
+    }
 
     if (safeRow == pDrag.row && safeCol == pDrag.col) {
         return basePlacements
@@ -503,7 +576,7 @@ fun resolveMatrixDragLayout(
                 widget = pDrag.widget.copy(gridRow = safeRow, gridCol = safeCol)
             )
         )
-        return compactEmptyMatrixRows(result)
+        return compactEmptyMatrixRows(result, maxRowsPerPage)
     }
 
     if (colliding.size == 1) {
@@ -517,7 +590,7 @@ fun resolveMatrixDragLayout(
 
         val alternateColsOnSameRow = (0..(4 - other.colSpan)).filter { it != other.col }
         for (altCol in alternateColsOnSameRow) {
-            if (canFitInMatrix(occupiedByRest, other.row, altCol, other.rowSpan, other.colSpan)) {
+            if (canFitInMatrix(occupiedByRest, other.row, altCol, other.rowSpan, other.colSpan, maxRowsPerPage)) {
                 val result = nonColliding.toMutableList()
                 result.add(
                     other.copy(
@@ -532,13 +605,13 @@ fun resolveMatrixDragLayout(
                         widget = pDrag.widget.copy(gridRow = safeRow, gridCol = safeCol)
                     )
                 )
-                return compactEmptyMatrixRows(result)
+                return compactEmptyMatrixRows(result, maxRowsPerPage)
             }
         }
 
         val swapCol = pDrag.col.coerceIn(0, 4 - other.colSpan)
         val swapRow = pDrag.row
-        if (canFitInMatrix(occupiedByRest, swapRow, swapCol, other.rowSpan, other.colSpan)) {
+        if (canFitInMatrix(occupiedByRest, swapRow, swapCol, other.rowSpan, other.colSpan, maxRowsPerPage)) {
             val result = nonColliding.toMutableList()
             result.add(
                 other.copy(
@@ -554,7 +627,7 @@ fun resolveMatrixDragLayout(
                     widget = pDrag.widget.copy(gridRow = safeRow, gridCol = safeCol)
                 )
             )
-            return compactEmptyMatrixRows(result)
+            return compactEmptyMatrixRows(result, maxRowsPerPage)
         }
     }
 
@@ -572,7 +645,7 @@ fun resolveMatrixDragLayout(
 
     val sortedOthers = others.sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
     for (item in sortedOthers) {
-        if (canFitInMatrix(occupied, item.row, item.col, item.rowSpan, item.colSpan)) {
+        if (canFitInMatrix(occupied, item.row, item.col, item.rowSpan, item.colSpan, maxRowsPerPage)) {
             markMatrixOccupied(occupied, item.row, item.col, item.rowSpan, item.colSpan)
             result.add(item)
         } else {
@@ -582,9 +655,12 @@ fun resolveMatrixDragLayout(
             var found = false
 
             while (!found) {
+                if (maxRowsPerPage > 0 && (r % maxRowsPerPage) + item.rowSpan > maxRowsPerPage) {
+                    r = ((r / maxRowsPerPage) + 1) * maxRowsPerPage
+                }
                 val candidateCols = listOf(item.col) + (0..(4 - item.colSpan)).filter { it != item.col }
                 for (c in candidateCols) {
-                    if (canFitInMatrix(occupied, r, c, item.rowSpan, item.colSpan)) {
+                    if (canFitInMatrix(occupied, r, c, item.rowSpan, item.colSpan, maxRowsPerPage)) {
                         found = true
                         foundRow = r
                         foundCol = c
@@ -605,5 +681,5 @@ fun resolveMatrixDragLayout(
         }
     }
 
-    return compactEmptyMatrixRows(result)
+    return compactEmptyMatrixRows(result, maxRowsPerPage)
 }
