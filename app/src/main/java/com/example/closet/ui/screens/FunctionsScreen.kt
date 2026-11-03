@@ -454,7 +454,7 @@ fun FunctionsScreen(
             allFunctions.find { it.targetSubScreen == currentSubScreen }
         }
 
-        if (activeDef != null) {
+        if (activeDef != null && currentSubScreen != FunctionSubScreen.TOOLS) {
             FunctionInfoButtonWithPopup(
                 title = activeDef.title,
                 description = activeDef.subtitle,

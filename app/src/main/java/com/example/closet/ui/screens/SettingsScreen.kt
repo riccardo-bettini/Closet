@@ -1,5 +1,8 @@
 package com.example.closet.ui.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.*
+import com.example.closet.ui.viewmodel.ClosetSwipeDirection
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -165,6 +168,75 @@ private fun extractHueFromColor(color: Color): Float {
 // SCHERMATA IMPOSTAZIONI (ONE UI 9.0)
 // =========================================================================
 
+enum class SettingsCategory(val title: String) {
+    NAVIGATION("Navigazione & Schede"),
+    THEME("Tema"),
+    NOTIFICATIONS("Notifiche"),
+    RESET("Ripristino")
+}
+
+@Composable
+private fun SettingsCategoryCard(
+    title: String,
+    icon: ImageVector,
+    iconTint: Color,
+    iconBgColor: Color,
+    onClick: () -> Unit
+) {
+    val colors = LocalOneUIColors.current
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = colors.cardBackground,
+        border = BorderStroke(0.5.dp, colors.cardBorder),
+        tonalElevation = 2.dp,
+        shadowElevation = 2.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(iconBgColor),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier.size(23.dp)
+                    )
+                }
+
+                Text(
+                    text = title,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary
+                )
+            }
+
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = colors.textMuted,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
 @Composable
 fun SettingsScreen(
     currentTheme: AppTheme,
@@ -175,18 +247,32 @@ fun SettingsScreen(
     onResetAccentColor: () -> Unit,
     useDistinctFunctionColors: Boolean,
     onToggleDistinctFunctionColors: (Boolean) -> Unit,
+    notificationsSoundEnabled: Boolean = true,
+    onToggleNotificationsSound: (Boolean) -> Unit = {},
+    notificationsVibrationEnabled: Boolean = true,
+    onToggleNotificationsVibration: (Boolean) -> Unit = {},
     autoCheckUpdatesOnStartup: Boolean = true,
     onToggleAutoCheckUpdates: (Boolean) -> Unit = {},
     islandTabs: List<IslandTabType> = listOf(IslandTabType.HOME, IslandTabType.WARDROBE, IslandTabType.FUNCTIONS),
     onSaveIslandTabs: (List<IslandTabType>) -> Unit = {},
     favoriteShortcuts: List<PlacedFavoriteShortcut> = emptyList(),
     onSaveFavoriteShortcuts: (List<PlacedFavoriteShortcut>) -> Unit = {},
+    closetSwipeChangeEnabled: Boolean = true,
+    onToggleClosetSwipeChange: (Boolean) -> Unit = {},
+    closetSwipeDirection: ClosetSwipeDirection = ClosetSwipeDirection.VERTICAL,
+    onSelectClosetSwipeDirection: (ClosetSwipeDirection) -> Unit = {},
+    onOpenReleaseNotes: () -> Unit = {},
     onClearAllData: () -> Unit,
     onResetSettings: () -> Unit,
     onBack: () -> Unit
 ) {
     val colors = LocalOneUIColors.current
-    val scrollState = rememberScrollState()
+    val context = LocalContext.current
+
+    var currentCategory by remember { mutableStateOf<SettingsCategory?>(null) }
+    BackHandler(enabled = currentCategory != null) {
+        currentCategory = null
+    }
 
     var showIslandTabsEditorDialog by remember { mutableStateOf(false) }
     var showFavoriteEditorDialog by remember { mutableStateOf(false) }
@@ -201,6 +287,15 @@ fun SettingsScreen(
         colorToHexString(currentAccentColor)
     }
 
+    val appVersionName = remember(context) {
+        try {
+            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            packageInfo.versionName ?: "1.0.0"
+        } catch (e: Exception) {
+            "1.0.0"
+        }
+    }
+
     val topFadeColor = when {
         currentTheme == AppTheme.AMOLED -> Color(0xFF000000)
         colors.isDark -> Color(0xFF13171E)
@@ -213,425 +308,726 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(Color.Transparent)
     ) {
-        // Area Scrollabile con contenuto e titolo che scorre
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 56.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            // Intestazione con Titolo che scorre con il resto della schermata
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 18.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Spazio riservato al tasto indietro fluttuante quando lo scroll è in cima
-                Spacer(modifier = Modifier.width(52.dp))
-                Text(
-                    text = "Impostazioni",
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = colors.textPrimary,
-                    letterSpacing = 0.4.sp
-                )
-            }
-
-            // =====================================================
-            // SEZIONE 1: ASPETTO E TEMA (SLIDER A 4 POSIZIONI)
-            // =====================================================
-                    SettingsSectionHeader(
-                        title = "Aspetto e Tema",
-                        icon = Icons.Outlined.DarkMode
-                    )
-
-                    Theme4PositionSlider(
-                        currentTheme = currentTheme,
-                        onThemeChange = onThemeChange
-                    )
-
-                    // =====================================================
-                    // SEZIONE 2: COLORE PRINCIPALE (SLIDER + HEX BOX)
-                    // =====================================================
-                    SettingsSectionHeader(
-                        title = "Colore Principale",
-                        icon = Icons.Outlined.Palette
-                    )
-
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = colors.cardBackground,
-                        border = BorderStroke(0.5.dp, colors.cardBorder),
-                        tonalElevation = 2.dp,
-                        shadowElevation = 2.dp,
-                        modifier = Modifier.fillMaxWidth()
+        AnimatedContent(
+            targetState = currentCategory,
+            transitionSpec = {
+                if (targetState != null) {
+                    (slideInHorizontally { width -> width / 3 } + fadeIn(tween(250)))
+                        .togetherWith(slideOutHorizontally { width -> -width / 3 } + fadeOut(tween(200)))
+                } else {
+                    (slideInHorizontally { width -> -width / 3 } + fadeIn(tween(250)))
+                        .togetherWith(slideOutHorizontally { width -> width / 3 } + fadeOut(tween(200)))
+                }
+            },
+            label = "SettingsCategoryTransition",
+            modifier = Modifier.fillMaxSize()
+        ) { category ->
+            when (category) {
+                null -> {
+                    val mainScrollState = rememberScrollState()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(mainScrollState)
+                            .padding(horizontal = 20.dp)
+                            .padding(bottom = 56.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Column(
-                            modifier = Modifier.padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        // Intestazione con Titolo che scorre con il resto della schermata
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 18.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Tonalità personalizzata",
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.textPrimary
-                                    )
-                                }
+                            Spacer(modifier = Modifier.width(52.dp))
+                            Text(
+                                text = "Impostazioni",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = colors.textPrimary,
+                                letterSpacing = 0.4.sp
+                            )
+                        }
 
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = colors.surfaceSecondary,
-                                    border = BorderStroke(1.dp, currentAccentColor.copy(alpha = 0.65f))
+                        // Categorie di impostazioni (senza descrizioni)
+                        SettingsSectionHeader(
+                            title = "Sezioni",
+                            icon = Icons.Outlined.Tune
+                        )
+
+                        SettingsCategoryCard(
+                            title = "Navigazione & Schede",
+                            icon = Icons.Outlined.TouchApp,
+                            iconTint = Color(0xFF10B981),
+                            iconBgColor = Color(0xFF10B981).copy(alpha = if (colors.isDark) 0.22f else 0.14f),
+                            onClick = { currentCategory = SettingsCategory.NAVIGATION }
+                        )
+
+                        SettingsCategoryCard(
+                            title = "Tema",
+                            icon = Icons.Outlined.Palette,
+                            iconTint = colors.accent,
+                            iconBgColor = colors.accent.copy(alpha = if (colors.isDark) 0.22f else 0.14f),
+                            onClick = { currentCategory = SettingsCategory.THEME }
+                        )
+
+                        SettingsCategoryCard(
+                            title = "Notifiche",
+                            icon = Icons.Outlined.Notifications,
+                            iconTint = Color(0xFF388AF6),
+                            iconBgColor = Color(0xFF388AF6).copy(alpha = if (colors.isDark) 0.22f else 0.14f),
+                            onClick = { currentCategory = SettingsCategory.NOTIFICATIONS }
+                        )
+
+                        SettingsCategoryCard(
+                            title = "Ripristino",
+                            icon = Icons.Outlined.RestartAlt,
+                            iconTint = Color(0xFFF97316),
+                            iconBgColor = Color(0xFFF97316).copy(alpha = if (colors.isDark) 0.22f else 0.14f),
+                            onClick = { currentCategory = SettingsCategory.RESET }
+                        )
+
+                        // Sezione Aggiornamento Software (rimane nella prima schermata)
+                        SettingsSectionHeader(
+                            title = "Aggiornamento Software",
+                            icon = Icons.Outlined.SystemUpdate
+                        )
+
+                        AppUpdateSection(
+                            currentVersionName = appVersionName,
+                            autoCheckUpdatesOnStartup = autoCheckUpdatesOnStartup,
+                            onToggleAutoCheckUpdates = onToggleAutoCheckUpdates,
+                            onOpenReleaseNotes = onOpenReleaseNotes
+                        )
+
+                        // Info Versione App e Autore
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp, bottom = 16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "Closet v$appVersionName",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.textSecondary
+                            )
+                            Text(
+                                text = "Autore: Riccardo Bettini",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = colors.textMuted
+                            )
+                        }
+                    }
+                }
+
+                SettingsCategory.NAVIGATION -> {
+                    val navScrollState = rememberScrollState()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(navScrollState)
+                            .padding(horizontal = 20.dp)
+                            .padding(bottom = 56.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 18.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Spacer(modifier = Modifier.width(52.dp))
+                            Text(
+                                text = "Navigazione",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = colors.textPrimary,
+                                letterSpacing = 0.4.sp
+                            )
+                        }
+
+                        // Sezione Gestione Isola & Scorciatoie
+                        SettingsSectionHeader(
+                            title = "Isola & Scorciatoie",
+                            icon = Icons.Outlined.Widgets
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = colors.cardBackground,
+                            border = BorderStroke(0.5.dp, colors.cardBorder),
+                            tonalElevation = 2.dp,
+                            shadowElevation = 2.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                                SettingsActionRow(
+                                    icon = Icons.Outlined.ViewStream,
+                                    iconTint = colors.accent,
+                                    title = "Gestione schede dell'isola",
+                                    onClick = { showIslandTabsEditorDialog = true }
+                                )
+
+                                HorizontalDivider(
+                                    color = colors.cardBorder,
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+
+                                SettingsActionRow(
+                                    icon = Icons.Outlined.Star,
+                                    iconTint = Color(0xFFEAB308),
+                                    title = "Gestione funzioni preferite (★)",
+                                    onClick = { showFavoriteEditorDialog = true }
+                                )
+                            }
+                        }
+
+                        // Sezione Cambio Armadio con Swipe
+                        SettingsSectionHeader(
+                            title = "Armadio rapido",
+                            icon = Icons.Outlined.MeetingRoom
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = colors.cardBackground,
+                            border = BorderStroke(0.5.dp, colors.cardBorder),
+                            tonalElevation = 2.dp,
+                            shadowElevation = 2.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(18.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .clickable { onToggleClosetSwipeChange(!closetSwipeChangeEnabled) }
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        modifier = Modifier.weight(1f)
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(14.dp)
+                                                .size(40.dp)
                                                 .clip(CircleShape)
-                                                .background(currentAccentColor)
-                                                .border(0.5.dp, Color.White.copy(alpha = 0.5f), CircleShape)
-                                        )
+                                                .background(colors.accentContainer),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.TouchApp,
+                                                contentDescription = null,
+                                                tint = colors.accent,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Column {
+                                            Text(
+                                                text = "Cambia armadio con swipe",
+                                                fontSize = 14.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.textPrimary
+                                            )
+                                            Text(
+                                                text = "Scorri sul selettore per cambiare armadio",
+                                                fontSize = 12.sp,
+                                                color = colors.textSecondary
+                                            )
+                                        }
+                                    }
+
+                                    Switch(
+                                        checked = closetSwipeChangeEnabled,
+                                        onCheckedChange = { onToggleClosetSwipeChange(it) },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.White,
+                                            checkedTrackColor = colors.accent,
+                                            uncheckedThumbColor = colors.textSecondary,
+                                            uncheckedTrackColor = colors.surfaceSecondary
+                                        ),
+                                        modifier = Modifier.scale(0.88f)
+                                    )
+                                }
+
+                                if (closetSwipeChangeEnabled) {
+                                    HorizontalDivider(color = colors.cardBorder)
+
+                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                         Text(
-                                            text = hexCode,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontFamily = FontFamily.Monospace,
+                                            text = "Direzione swipe",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.textSecondary
+                                        )
+
+                                        ClosetSwipeDirection2PositionSlider(
+                                            currentDirection = closetSwipeDirection,
+                                            onDirectionChange = onSelectClosetSwipeDirection
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                SettingsCategory.THEME -> {
+                    val themeScrollState = rememberScrollState()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(themeScrollState)
+                            .padding(horizontal = 20.dp)
+                            .padding(bottom = 56.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 18.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Spacer(modifier = Modifier.width(52.dp))
+                            Text(
+                                text = "Tema",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = colors.textPrimary,
+                                letterSpacing = 0.4.sp
+                            )
+                        }
+
+                        SettingsSectionHeader(
+                            title = "Aspetto e Tema",
+                            icon = Icons.Outlined.DarkMode
+                        )
+
+                        Theme4PositionSlider(
+                            currentTheme = currentTheme,
+                            onThemeChange = onThemeChange
+                        )
+
+                        SettingsSectionHeader(
+                            title = "Colore Principale",
+                            icon = Icons.Outlined.Palette
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = colors.cardBackground,
+                            border = BorderStroke(0.5.dp, colors.cardBorder),
+                            tonalElevation = 2.dp,
+                            shadowElevation = 2.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(18.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Tonalità personalizzata",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
                                             color = colors.textPrimary
                                         )
                                     }
-                                }
-                            }
 
-                            HueColorSlider(
-                                currentHue = sliderHue,
-                                activeColor = currentAccentColor,
-                                onHueChanged = { newHue ->
-                                    sliderHue = newHue
-                                    val newColor = Color.hsv(newHue, 0.72f, 0.92f)
-                                    onAccentColorChange(newColor)
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = colors.surfaceSecondary,
+                                        border = BorderStroke(1.dp, currentAccentColor.copy(alpha = 0.65f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(14.dp)
+                                                    .clip(CircleShape)
+                                                    .background(currentAccentColor)
+                                                    .border(0.5.dp, Color.White.copy(alpha = 0.5f), CircleShape)
+                                            )
+                                            Text(
+                                                text = hexCode,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = colors.textPrimary
+                                            )
+                                        }
+                                    }
                                 }
-                            )
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                val quickPresets = remember {
-                                    listOf(
-                                        Color(0xFF53B5A2),
-                                        Color(0xFF388AF6),
-                                        Color(0xFF8B5CF6),
-                                        Color(0xFFEC4899),
-                                        Color(0xFFF97316),
-                                        Color(0xFF10B981)
-                                    )
-                                }
+                                HueColorSlider(
+                                    currentHue = sliderHue,
+                                    activeColor = currentAccentColor,
+                                    onHueChanged = { newHue ->
+                                        sliderHue = newHue
+                                        val newColor = Color.hsv(newHue, 0.72f, 0.92f)
+                                        onAccentColorChange(newColor)
+                                    }
+                                )
 
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    quickPresets.forEach { preset ->
-                                        val isCurrent = colorToHexString(preset) == hexCode
+                                    val quickPresets = remember {
+                                        listOf(
+                                            Color(0xFF53B5A2),
+                                            Color(0xFF388AF6),
+                                            Color(0xFF8B5CF6),
+                                            Color(0xFFEC4899),
+                                            Color(0xFFF97316),
+                                            Color(0xFF10B981)
+                                        )
+                                    }
+
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        quickPresets.forEach { preset ->
+                                            val isCurrent = colorToHexString(preset) == hexCode
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(26.dp)
+                                                    .clip(CircleShape)
+                                                    .background(preset)
+                                                    .border(
+                                                        width = if (isCurrent) 2.dp else 0.5.dp,
+                                                        color = if (isCurrent) colors.textPrimary else Color.White.copy(alpha = 0.3f),
+                                                        shape = CircleShape
+                                                    )
+                                                    .clickable {
+                                                        sliderHue = extractHueFromColor(preset)
+                                                        onAccentColorChange(preset)
+                                                    }
+                                            )
+                                        }
+                                    }
+
+                                    if (isCustomAccent) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = colors.surfaceSecondary,
+                                            modifier = Modifier.clickable { onResetAccentColor() }
+                                        ) {
+                                            Text(
+                                                text = "Default",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.accent,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                HorizontalDivider(color = colors.cardBorder)
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .clickable { onToggleDistinctFunctionColors(!useDistinctFunctionColors) }
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(26.dp)
+                                                .size(40.dp)
                                                 .clip(CircleShape)
-                                                .background(preset)
-                                                .border(
-                                                    width = if (isCurrent) 2.dp else 0.5.dp,
-                                                    color = if (isCurrent) colors.textPrimary else Color.White.copy(alpha = 0.3f),
-                                                    shape = CircleShape
-                                                )
-                                                .clickable {
-                                                    sliderHue = extractHueFromColor(preset)
-                                                    onAccentColorChange(preset)
-                                                }
-                                        )
-                                    }
-                                }
-
-                                if (isCustomAccent) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = colors.surfaceSecondary,
-                                        modifier = Modifier.clickable { onResetAccentColor() }
-                                    ) {
+                                                .background(colors.accentContainer),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.AutoAwesome,
+                                                contentDescription = null,
+                                                tint = colors.accent,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
                                         Text(
-                                            text = "Default",
-                                            fontSize = 11.sp,
+                                            text = "Colori distinti nelle Funzioni",
+                                            fontSize = 14.5.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = colors.accent,
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                            color = colors.textPrimary
                                         )
                                     }
-                                }
-                            }
 
-                            HorizontalDivider(color = colors.cardBorder)
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .clickable { onToggleDistinctFunctionColors(!useDistinctFunctionColors) }
-                                    .padding(vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(CircleShape)
-                                            .background(colors.accentContainer),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.AutoAwesome,
-                                            contentDescription = null,
-                                            tint = colors.accent,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Text(
-                                        text = "Colori distinti nelle Funzioni",
-                                        fontSize = 14.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.textPrimary
+                                    Switch(
+                                        checked = useDistinctFunctionColors,
+                                        onCheckedChange = { onToggleDistinctFunctionColors(it) },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.White,
+                                            checkedTrackColor = colors.accent,
+                                            uncheckedThumbColor = colors.textSecondary,
+                                            uncheckedTrackColor = colors.surfaceSecondary
+                                        ),
+                                        modifier = Modifier.scale(0.88f)
                                     )
                                 }
-
-                                Switch(
-                                    checked = useDistinctFunctionColors,
-                                    onCheckedChange = { onToggleDistinctFunctionColors(it) },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Color.White,
-                                        checkedTrackColor = colors.accent,
-                                        uncheckedThumbColor = colors.textSecondary,
-                                        uncheckedTrackColor = colors.surfaceSecondary
-                                    ),
-                                    modifier = Modifier.scale(0.88f)
-                                )
                             }
                         }
-                    }
-
-                    // =====================================================
-                    // SEZIONE 3: ISOLA DI NAVIGAZIONE & TASTO STELLA (★)
-                    // =====================================================
-                    SettingsSectionHeader(
-                        title = "Isola e Scorciatoie",
-                        icon = Icons.Outlined.StarOutline
-                    )
-
-                    // TASTO 1: GESTIONE DELLE SCHEDE DELL'ISOLA
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = colors.cardBackground,
-                        border = BorderStroke(0.5.dp, colors.cardBorder),
-                        tonalElevation = 2.dp,
-                        shadowElevation = 2.dp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showIslandTabsEditorDialog = true }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(46.dp)
-                                        .clip(CircleShape)
-                                        .background(colors.accent.copy(alpha = if (colors.isDark) 0.22f else 0.14f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.ViewCarousel,
-                                        contentDescription = "Gestione delle schede",
-                                        tint = colors.accent,
-                                        modifier = Modifier.size(23.dp)
-                                    )
-                                }
-
-                                Text(
-                                    text = "Gestione delle schede",
-                                    fontSize = 15.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.textPrimary
-                                )
-                            }
-
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = null,
-                                tint = colors.textMuted,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
-
-                    // TASTO 2: MODIFICA FUNZIONI PREFERITE (TASTO STELLA)
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = colors.cardBackground,
-                        border = BorderStroke(0.5.dp, colors.cardBorder),
-                        tonalElevation = 2.dp,
-                        shadowElevation = 2.dp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showFavoriteEditorDialog = true }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                val starColor = Color(0xFFEAB308)
-                                Box(
-                                    modifier = Modifier
-                                        .size(46.dp)
-                                        .clip(CircleShape)
-                                        .background(starColor.copy(alpha = if (colors.isDark) 0.22f else 0.14f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Star,
-                                        contentDescription = "Funzioni preferite",
-                                        tint = starColor,
-                                        modifier = Modifier.size(23.dp)
-                                    )
-                                }
-
-                                Text(
-                                    text = "Modifica funzioni preferite",
-                                    fontSize = 15.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.textPrimary
-                                )
-                            }
-
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = null,
-                                tint = colors.textMuted,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
-
-                    // =====================================================
-                    // SEZIONE 4: GESTIONE DATI E RIPRISTINO
-                    // =====================================================
-                    SettingsSectionHeader(
-                        title = "Dati e Ripristino",
-                        icon = Icons.Outlined.Storage
-                    )
-
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = colors.cardBackground,
-                        border = BorderStroke(0.5.dp, colors.cardBorder),
-                        tonalElevation = 2.dp,
-                        shadowElevation = 2.dp,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(vertical = 6.dp)) {
-                            SettingsActionRow(
-                                icon = Icons.Outlined.RestartAlt,
-                                iconTint = colors.accent,
-                                title = "Ripristina impostazioni predefinite",
-                                onClick = { showResetSettingsDialog = true }
-                            )
-
-                            HorizontalDivider(
-                                color = colors.cardBorder,
-                                modifier = Modifier.padding(horizontal = 16.dp)
-                            )
-
-                            SettingsActionRow(
-                                icon = Icons.Outlined.DeleteForever,
-                                iconTint = Color(0xFFE55353),
-                                title = "Cancella tutti i dati dell'armadio",
-                                titleColor = Color(0xFFE55353),
-                                onClick = { showClearDataDialog = true }
-                            )
-                        }
-                    }
-
-                    // =====================================================
-                    // SEZIONE 5: AGGIORNAMENTO SOFTWARE
-                    // =====================================================
-                    val context = LocalContext.current
-                    val appVersionName = remember(context) {
-                        try {
-                            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                            packageInfo.versionName ?: "1.0.0"
-                        } catch (e: Exception) {
-                            "1.0.0"
-                        }
-                    }
-
-                    AppUpdateSection(
-                        currentVersionName = appVersionName,
-                        autoCheckUpdatesOnStartup = autoCheckUpdatesOnStartup,
-                        onToggleAutoCheckUpdates = onToggleAutoCheckUpdates
-                    )
-
-                    // =====================================================
-                    // INFO VERSIONE APP E AUTORE (Auto-aggiornante)
-                    // =====================================================
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp, bottom = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "Closet v$appVersionName",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.textSecondary
-                        )
-                        Text(
-                            text = "Autore: Riccardo Bettini",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = colors.textMuted
-                        )
                     }
                 }
+
+                SettingsCategory.NOTIFICATIONS -> {
+                    val notifScrollState = rememberScrollState()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(notifScrollState)
+                            .padding(horizontal = 20.dp)
+                            .padding(bottom = 56.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 18.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Spacer(modifier = Modifier.width(52.dp))
+                            Text(
+                                text = "Notifiche",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = colors.textPrimary,
+                                letterSpacing = 0.4.sp
+                            )
+                        }
+
+                        SettingsSectionHeader(
+                            title = "Suoni e Vibrazione",
+                            icon = Icons.Outlined.Notifications
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = colors.cardBackground,
+                            border = BorderStroke(0.5.dp, colors.cardBorder),
+                            tonalElevation = 2.dp,
+                            shadowElevation = 2.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(18.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                // Toggle Suono Notifiche
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .clickable { onToggleNotificationsSound(!notificationsSoundEnabled) }
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                                .background(colors.accentContainer),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.VolumeUp,
+                                                contentDescription = null,
+                                                tint = colors.accent,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Column {
+                                            Text(
+                                                text = "Suono notifiche",
+                                                fontSize = 14.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.textPrimary
+                                            )
+                                            Text(
+                                                text = "Suono acustico all'arrivo dei promemoria",
+                                                fontSize = 12.sp,
+                                                color = colors.textSecondary
+                                            )
+                                        }
+                                    }
+
+                                    Switch(
+                                        checked = notificationsSoundEnabled,
+                                        onCheckedChange = { onToggleNotificationsSound(it) },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.White,
+                                            checkedTrackColor = colors.accent,
+                                            uncheckedThumbColor = colors.textSecondary,
+                                            uncheckedTrackColor = colors.surfaceSecondary
+                                        ),
+                                        modifier = Modifier.scale(0.88f)
+                                    )
+                                }
+
+                                HorizontalDivider(color = colors.cardBorder)
+
+                                // Toggle Vibrazione Notifiche
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .clickable { onToggleNotificationsVibration(!notificationsVibrationEnabled) }
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                                .background(colors.accentContainer),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Vibration,
+                                                contentDescription = null,
+                                                tint = colors.accent,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Column {
+                                            Text(
+                                                text = "Vibrazione notifiche",
+                                                fontSize = 14.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.textPrimary
+                                            )
+                                            Text(
+                                                text = "Vibrazione allo scatto dei promemoria",
+                                                fontSize = 12.sp,
+                                                color = colors.textSecondary
+                                            )
+                                        }
+                                    }
+
+                                    Switch(
+                                        checked = notificationsVibrationEnabled,
+                                        onCheckedChange = { onToggleNotificationsVibration(it) },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.White,
+                                            checkedTrackColor = colors.accent,
+                                            uncheckedThumbColor = colors.textSecondary,
+                                            uncheckedTrackColor = colors.surfaceSecondary
+                                        ),
+                                        modifier = Modifier.scale(0.88f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                SettingsCategory.RESET -> {
+                    val resetScrollState = rememberScrollState()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(resetScrollState)
+                            .padding(horizontal = 20.dp)
+                            .padding(bottom = 56.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 18.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Spacer(modifier = Modifier.width(52.dp))
+                            Text(
+                                text = "Ripristino",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = colors.textPrimary,
+                                letterSpacing = 0.4.sp
+                            )
+                        }
+
+                        SettingsSectionHeader(
+                            title = "Opzioni di ripristino",
+                            icon = Icons.Outlined.Storage
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = colors.cardBackground,
+                            border = BorderStroke(0.5.dp, colors.cardBorder),
+                            tonalElevation = 2.dp,
+                            shadowElevation = 2.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                                SettingsActionRow(
+                                    icon = Icons.Outlined.RestartAlt,
+                                    iconTint = colors.accent,
+                                    title = "Ripristina impostazioni predefinite",
+                                    onClick = { showResetSettingsDialog = true }
+                                )
+
+                                HorizontalDivider(
+                                    color = colors.cardBorder,
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+
+                                SettingsActionRow(
+                                    icon = Icons.Outlined.DeleteForever,
+                                    iconTint = Color(0xFFE55353),
+                                    title = "Cancella tutti i dati dell'armadio",
+                                    titleColor = Color(0xFFE55353),
+                                    onClick = { showClearDataDialog = true }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // SFUMATURA SUPERIORE IN USCITA
         Box(
@@ -684,7 +1080,13 @@ fun SettingsScreen(
                 .zIndex(20f)
         ) {
             IconButton(
-                onClick = onBack,
+                onClick = {
+                    if (currentCategory != null) {
+                        currentCategory = null
+                    } else {
+                        onBack()
+                    }
+                },
                 modifier = Modifier.fillMaxSize()
             ) {
                 Icon(
@@ -967,6 +1369,125 @@ private fun Theme4PositionSlider(
                                 maxLines = 1
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClosetSwipeDirection2PositionSlider(
+    currentDirection: ClosetSwipeDirection,
+    onDirectionChange: (ClosetSwipeDirection) -> Unit
+) {
+    val colors = LocalOneUIColors.current
+    val directions = remember { ClosetSwipeDirection.entries }
+    val selectedIndex = directions.indexOf(currentDirection).coerceIn(0, 1)
+
+    var containerWidthPx by remember { mutableFloatStateOf(0f) }
+
+    val animatedIndex by animateFloatAsState(
+        targetValue = selectedIndex.toFloat(),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "swipeDirSliderAnim"
+    )
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = colors.surfaceSecondary,
+        border = BorderStroke(0.5.dp, colors.cardBorder),
+        tonalElevation = 1.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .onGloballyPositioned { coords ->
+                containerWidthPx = coords.size.width.toFloat()
+            }
+            .pointerInput(directions) {
+                detectTapGestures { offset ->
+                    if (size.width > 0) {
+                        val segmentWidth = size.width / 2f
+                        val tappedIndex = (offset.x / segmentWidth).toInt().coerceIn(0, 1)
+                        onDirectionChange(directions[tappedIndex])
+                    }
+                }
+            }
+            .pointerInput(directions) {
+                detectHorizontalDragGestures { change, _ ->
+                    change.consume()
+                    if (size.width > 0) {
+                        val segmentWidth = size.width / 2f
+                        val draggedIndex = (change.position.x / segmentWidth).toInt().coerceIn(0, 1)
+                        if (directions[draggedIndex] != currentDirection) {
+                            onDirectionChange(directions[draggedIndex])
+                        }
+                    }
+                }
+            }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(4.dp)
+        ) {
+            val density = LocalDensity.current
+            val thumbPadding = 4.dp
+            val thumbPaddingPx = with(density) { thumbPadding.toPx() }
+            val netWidthPx = (containerWidthPx - thumbPaddingPx * 2).coerceAtLeast(1f)
+            val segmentWidthPx = netWidthPx / 2f
+            val thumbWidthDp = with(density) { segmentWidthPx.toDp() }
+            val thumbOffsetXDp = with(density) { (animatedIndex * segmentWidthPx).toDp() }
+
+            if (containerWidthPx > 0f) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (colors.isDark) colors.cardBackground else Color.White,
+                    border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.45f)),
+                    shadowElevation = 2.dp,
+                    tonalElevation = 3.dp,
+                    modifier = Modifier
+                        .offset(x = thumbOffsetXDp)
+                        .width(thumbWidthDp)
+                        .fillMaxHeight()
+                ) {}
+            }
+
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                directions.forEachIndexed { index, direction ->
+                    val isSelected = index == selectedIndex
+                    val itemTextColor by animateColorAsState(
+                        targetValue = if (isSelected) colors.accent else colors.textSecondary,
+                        animationSpec = tween(150),
+                        label = "directionTextColor"
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (direction == ClosetSwipeDirection.VERTICAL) Icons.Outlined.SwapVert else Icons.Outlined.SwapHoriz,
+                            contentDescription = null,
+                            tint = itemTextColor,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = direction.label,
+                            color = itemTextColor,
+                            fontSize = 13.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        )
                     }
                 }
             }

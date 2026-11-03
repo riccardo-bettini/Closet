@@ -32,7 +32,8 @@ import kotlinx.coroutines.launch
 fun AppUpdateSection(
     currentVersionName: String,
     autoCheckUpdatesOnStartup: Boolean = true,
-    onToggleAutoCheckUpdates: (Boolean) -> Unit = {}
+    onToggleAutoCheckUpdates: (Boolean) -> Unit = {},
+    onOpenReleaseNotes: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -74,28 +75,6 @@ fun AppUpdateSection(
                 updateState = UpdateUiState.Error(err.localizedMessage ?: "Download fallito")
             }
         }
-    }
-
-    // Header sezione
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.SystemUpdate,
-            contentDescription = null,
-            tint = colors.textSecondary,
-            modifier = Modifier.size(18.dp)
-        )
-        Text(
-            text = "Aggiornamento Software",
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = colors.textSecondary
-        )
     }
 
     Surface(
@@ -159,6 +138,53 @@ fun AppUpdateSection(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Cerca aggiornamenti", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
+                }
+            }
+
+            HorizontalDivider(
+                color = colors.cardBorder.copy(alpha = 0.5f),
+                thickness = 0.5.dp
+            )
+
+            // Opzione: Note di rilascio
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onOpenReleaseNotes() }
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp)
+                ) {
+                    Text(
+                        text = "Note di rilascio",
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.textPrimary
+                    )
+                    Text(
+                        text = "Visualizza tutte le novità e modifiche di questa versione",
+                        fontSize = 12.sp,
+                        color = colors.textMuted,
+                        lineHeight = 16.sp
+                    )
+                }
+
+                FilledTonalButton(
+                    onClick = onOpenReleaseNotes,
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = colors.accent.copy(alpha = 0.12f),
+                        contentColor = colors.accent
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text("Leggi", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                 }
             }
 

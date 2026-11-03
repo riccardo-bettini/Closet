@@ -17,6 +17,8 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -28,14 +30,22 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Restore
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.*
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Repeat
+import com.example.closet.ui.reminder.ReminderItem
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle as ComposeTextStyle
@@ -91,12 +101,14 @@ fun CalendarScreen(
     }
 
     val eventsMap = viewModel.eventsMap
+    val reminders = viewModel.reminders
     val trashEvents = viewModel.trashEvents
 
     var selectedDate by remember { mutableStateOf(today) }
     var isWeekViewOnly by remember { mutableStateOf(false) }
-    var showAddOrEditBottomSheet by remember { mutableStateOf(false) }
+    var showAddOrEditDialog by remember { mutableStateOf(false) }
     var eventToEdit by remember { mutableStateOf<CalendarEvent?>(null) }
+    var reminderToShowDetails by remember { mutableStateOf<ReminderItem?>(null) }
     var showMonthYearPicker by remember { mutableStateOf(false) }
 
     val baseMonth = remember { YearMonth.now() }
@@ -251,6 +263,7 @@ fun CalendarScreen(
                         selectedDate = selectedDate,
                         today = today,
                         eventsMap = eventsMap,
+                        reminders = reminders.toList(),
                         onDateSelected = { date -> selectedDate = date }
                     )
                 }
@@ -267,6 +280,7 @@ fun CalendarScreen(
                         selectedDate = selectedDate,
                         today = today,
                         eventsMap = eventsMap,
+                        reminders = reminders.toList(),
                         onDateSelected = { date ->
                             selectedDate = date
                             val targetMonday = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
@@ -284,6 +298,12 @@ fun CalendarScreen(
 
         val dayEvents = remember(eventsMap, selectedDate) {
             eventsMap[selectedDate] ?: emptyList()
+        }
+        val dayReminders = remember(reminders.toList(), selectedDate) {
+            reminders.filter { r ->
+                if (r.isRecurring) r.recurringDays.contains(selectedDate.dayOfWeek.value)
+                else r.date != null && r.date == selectedDate
+            }
         }
         val dayOfWeekDisplayName = remember(selectedDate) {
             selectedDate.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.ITALIAN).uppercase()
@@ -362,7 +382,7 @@ fun CalendarScreen(
                         .background(colors.surfaceSecondary)
                         .clickable {
                             eventToEdit = null
-                            showAddOrEditBottomSheet = true
+                            showAddOrEditDialog = true
                         },
                     contentAlignment = Alignment.Center
                 ) {
@@ -377,7 +397,7 @@ fun CalendarScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            if (dayEvents.isEmpty()) {
+            if (dayEvents.isEmpty() && dayReminders.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -385,7 +405,7 @@ fun CalendarScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Nessun impegno o outfit registrato",
+                        text = "Nessun impegno o promemoria registrato",
                         color = colors.textMuted,
                         fontSize = 14.sp
                     )
@@ -398,62 +418,96 @@ fun CalendarScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(bottom = 120.dp)
                 ) {
-                    items(dayEvents, key = { it.id }) { event ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(colors.surfaceSecondary)
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
+                    if (dayEvents.isNotEmpty()) {
+                        item(key = "header_events") {
+                            Text(
+                                text = "Impegni (${dayEvents.size})",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textSecondary,
+                                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+                            )
+                        }
+                        items(dayEvents, key = { it.id }) { event ->
                             Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(colors.surfaceSecondary)
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .background(event.color, CircleShape)
-                                )
-                                Column {
-                                    Text(
-                                        text = event.title,
-                                        color = colors.textPrimary,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .background(event.color, CircleShape)
                                     )
-                                    val timeString = when {
-                                        event.isAllDay -> "Tutto il giorno"
-                                        event.startTime.isNotBlank() && event.endTime.isNotBlank() -> "${event.startTime} - ${event.endTime}"
-                                        event.startTime.isNotBlank() -> event.startTime
-                                        else -> ""
-                                    }
-                                    if (timeString.isNotBlank()) {
+                                    Column {
                                         Text(
-                                            text = timeString,
-                                            color = colors.textSecondary,
-                                            fontSize = 12.sp
+                                            text = event.title,
+                                            color = colors.textPrimary,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium
                                         )
+                                        val timeString = when {
+                                            event.isAllDay -> "Tutto il giorno"
+                                            event.startTime.isNotBlank() && event.endTime.isNotBlank() -> "${event.startTime} - ${event.endTime}"
+                                            event.startTime.isNotBlank() -> event.startTime
+                                            else -> ""
+                                        }
+                                        if (timeString.isNotBlank()) {
+                                            Text(
+                                                text = timeString,
+                                                color = colors.textSecondary,
+                                                fontSize = 12.sp
+                                            )
+                                        }
                                     }
                                 }
-                            }
 
-                            IconButton(
-                                onClick = {
-                                    eventToEdit = event
-                                    showAddOrEditBottomSheet = true
-                                },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    Icons.Outlined.Edit,
-                                    contentDescription = "Modifica",
-                                    tint = colors.textSecondary,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                IconButton(
+                                    onClick = {
+                                        eventToEdit = event
+                                        showAddOrEditDialog = true
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.Edit,
+                                        contentDescription = "Modifica",
+                                        tint = colors.textSecondary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
+                        }
+                    }
+
+                    if (dayReminders.isNotEmpty()) {
+                        item(key = "header_reminders") {
+                            Text(
+                                text = "Promemoria (${dayReminders.size})",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textSecondary,
+                                modifier = Modifier.padding(start = 4.dp, top = if (dayEvents.isNotEmpty()) 10.dp else 0.dp, bottom = 2.dp)
+                            )
+                        }
+                        items(dayReminders, key = { "rem_${it.id}" }) { reminder ->
+                            CalendarReminderCard(
+                                reminder = reminder,
+                                onToggle = { isEnabled ->
+                                    viewModel.toggleReminder(reminder.id, isEnabled)
+                                },
+                                onClick = {
+                                    reminderToShowDetails = reminder
+                                }
+                            )
                         }
                     }
                 }
@@ -475,22 +529,22 @@ fun CalendarScreen(
         )
     }
 
-    if (showAddOrEditBottomSheet) {
-        SamsungEventBottomSheet(
+    if (showAddOrEditDialog) {
+        SamsungEventDialog(
             selectedDate = selectedDate,
             initialEvent = eventToEdit,
             onDismiss = {
-                showAddOrEditBottomSheet = false
+                showAddOrEditDialog = false
                 eventToEdit = null
             },
             onSave = { updatedOrNewEvent ->
                 viewModel.saveCalendarEvent(updatedOrNewEvent)
-                showAddOrEditBottomSheet = false
+                showAddOrEditDialog = false
                 eventToEdit = null
             },
             onDelete = { eventToDelete ->
                 viewModel.deleteCalendarEvent(eventToDelete)
-                showAddOrEditBottomSheet = false
+                showAddOrEditDialog = false
                 eventToEdit = null
             }
         )
@@ -506,6 +560,13 @@ fun CalendarScreen(
             onClearAll = {
                 viewModel.clearTrash()
             }
+        )
+    }
+
+    if (reminderToShowDetails != null) {
+        ReminderDetailsDialog(
+            reminder = reminderToShowDetails!!,
+            onDismiss = { reminderToShowDetails = null }
         )
     }
 }
@@ -607,6 +668,7 @@ fun WeekRowView(
     selectedDate: LocalDate,
     today: LocalDate,
     eventsMap: Map<LocalDate, List<CalendarEvent>>,
+    reminders: List<ReminderItem> = emptyList(),
     onDateSelected: (LocalDate) -> Unit
 ) {
     val colors = LocalOneUIColors.current
@@ -621,6 +683,21 @@ fun WeekRowView(
             val isSelected = date == selectedDate
             val isToday = date == today
             val events = eventsMap[date] ?: emptyList()
+            val dayReminders = remember(reminders, date) {
+                reminders.filter { r ->
+                    if (r.isRecurring) r.recurringDays.contains(date.dayOfWeek.value)
+                    else r.date != null && r.date == date
+                }
+            }
+            val indicatorColors = remember(events, dayReminders) {
+                val list = mutableListOf<Color>()
+                events.forEach { list.add(it.color) }
+                dayReminders.forEach { r ->
+                    val visualColor = getFunctionVisualInfo(r.associatedFunction).third
+                    list.add(if (visualColor != Color.Unspecified) visualColor else Color(0xFFF59E0B))
+                }
+                list
+            }
 
             Box(
                 modifier = Modifier
@@ -657,17 +734,17 @@ fun WeekRowView(
                         fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal
                     )
 
-                    if (events.isNotEmpty()) {
+                    if (indicatorColors.isNotEmpty()) {
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            events.take(3).forEach { ev ->
+                            indicatorColors.take(3).forEach { barColor ->
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(3.dp)
-                                        .background(ev.color, CircleShape)
+                                        .background(barColor, CircleShape)
                                 )
                             }
                         }
@@ -686,6 +763,7 @@ fun MonthGrid(
     selectedDate: LocalDate,
     today: LocalDate,
     eventsMap: Map<LocalDate, List<CalendarEvent>>,
+    reminders: List<ReminderItem> = emptyList(),
     onDateSelected: (LocalDate) -> Unit
 ) {
     val colors = LocalOneUIColors.current
@@ -713,6 +791,21 @@ fun MonthGrid(
                     val isSelected = thisDate != null && thisDate == selectedDate
                     val isToday = thisDate != null && thisDate == today
                     val eventsForDay = if (thisDate != null) eventsMap[thisDate] ?: emptyList() else emptyList()
+                    val remindersForDay = if (thisDate != null) {
+                        reminders.filter { r ->
+                            if (r.isRecurring) r.recurringDays.contains(thisDate.dayOfWeek.value)
+                            else r.date != null && r.date == thisDate
+                        }
+                    } else emptyList()
+                    val indicatorColors = remember(eventsForDay, remindersForDay) {
+                        val list = mutableListOf<Color>()
+                        eventsForDay.forEach { list.add(it.color) }
+                        remindersForDay.forEach { r ->
+                            val visualColor = getFunctionVisualInfo(r.associatedFunction).third
+                            list.add(if (visualColor != Color.Unspecified) visualColor else Color(0xFFF59E0B))
+                        }
+                        list
+                    }
 
                     Box(
                         modifier = Modifier
@@ -754,17 +847,17 @@ fun MonthGrid(
                                     fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal
                                 )
 
-                                if (eventsForDay.isNotEmpty()) {
+                                if (indicatorColors.isNotEmpty()) {
                                     Column(
                                         modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
                                         verticalArrangement = Arrangement.spacedBy(2.dp)
                                     ) {
-                                        eventsForDay.take(3).forEach { ev ->
+                                        indicatorColors.take(3).forEach { barColor ->
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .height(3.dp)
-                                                    .background(ev.color, CircleShape)
+                                                    .background(barColor, CircleShape)
                                             )
                                         }
                                     }
@@ -782,7 +875,7 @@ fun MonthGrid(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SamsungEventBottomSheet(
+fun SamsungEventDialog(
     selectedDate: LocalDate,
     initialEvent: CalendarEvent? = null,
     onDismiss: () -> Unit,
@@ -813,17 +906,16 @@ fun SamsungEventBottomSheet(
 
     val palette = remember {
         listOf(
-            Color(0xFF388AF6),
-            Color(0xFF53B5A2),
-            Color(0xFFE55353),
-            Color(0xFFD68A2E),
-            Color(0xFFA855F7),
-            Color(0xFFEC4899),
-            Color(0xFFEAB308)
+            Color(0xFF388AF6), // Samsung Blue
+            Color(0xFF10B981), // Emerald
+            Color(0xFFEF4444), // Crimson Red
+            Color(0xFFF59E0B), // Amber
+            Color(0xFF8B5CF6), // Purple
+            Color(0xFFEC4899), // Pink
+            Color(0xFF06B6D4)  // Cyan
         )
     }
     var selectedColor by remember { mutableStateOf(initialEvent?.color ?: palette[0]) }
-    var showColorPalette by remember { mutableStateOf(false) }
 
     var showStartDatePicker by remember { mutableStateOf(false) }
     var showEndDatePicker by remember { mutableStateOf(false) }
@@ -838,101 +930,170 @@ fun SamsungEventBottomSheet(
 
     val timeFormatter = remember { DateTimeFormatter.ofPattern("HH:mm") }
 
-    ModalBottomSheet(
+    Dialog(
         onDismissRequest = onDismiss,
-        containerColor = colors.dialogBackground,
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(vertical = 10.dp)
-                    .width(40.dp)
-                    .height(4.dp)
-                    .background(colors.textSecondary.copy(alpha = 0.4f), CircleShape)
-            )
-        },
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 36.dp)
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Row(
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = colors.dialogBackground,
+                border = BorderStroke(0.5.dp, colors.cardBorder),
+                tonalElevation = 8.dp,
+                shadowElevation = 24.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .heightIn(max = 660.dp)
             ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    if (title.isEmpty()) {
-                        Text(
-                            text = "Titolo",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = colors.textSecondary
-                        )
-                    }
-                    BasicTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        textStyle = ComposeTextStyle(
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = colors.textPrimary
-                        ),
-                        cursorBrush = SolidColor(selectedColor),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 20.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Mood,
-                        contentDescription = "Adesivo",
-                        tint = colors.textSecondary,
-                        modifier = Modifier.size(26.dp)
-                    )
+                    // Header popup
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(selectedColor.copy(alpha = if (colors.isDark) 0.22f else 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.CalendarToday,
+                                    contentDescription = null,
+                                    tint = selectedColor,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
 
-                    Box {
-                        Box(
+                            Text(
+                                text = if (initialEvent != null) "Modifica evento" else "Nuovo evento",
+                                color = colors.textPrimary,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onDismiss,
                             modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape)
-                                .background(selectedColor)
-                                .clickable { showColorPalette = true }
-                        )
+                                .size(34.dp)
+                                .background(colors.surfaceSecondary, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Chiudi",
+                                tint = colors.textSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
 
-                        DropdownMenu(
-                            expanded = showColorPalette,
-                            onDismissRequest = { showColorPalette = false },
-                            modifier = Modifier.background(colors.surfaceSecondary),
-                            shape = RoundedCornerShape(16.dp)
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider(color = colors.cardBorder)
+
+                    // Contenuto a schede One UI scrollabile
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false)
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // 1. TITOLO EVENTO
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = colors.surfaceSecondary,
+                            border = BorderStroke(1.dp, colors.cardBorder),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
-                                modifier = Modifier.padding(10.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .clip(CircleShape)
+                                        .background(selectedColor)
+                                )
+
+                                BasicTextField(
+                                    value = title,
+                                    onValueChange = { title = it },
+                                    textStyle = ComposeTextStyle(
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.textPrimary
+                                    ),
+                                    cursorBrush = SolidColor(selectedColor),
+                                    singleLine = true,
+                                    decorationBox = { innerTextField ->
+                                        if (title.isEmpty()) {
+                                            Text(
+                                                text = "Titolo evento",
+                                                color = colors.textSecondary,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Normal
+                                            )
+                                        }
+                                        innerTextField()
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+
+                        // 2. PALETTE COLORI ONE UI
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = colors.surfaceSecondary,
+                            border = BorderStroke(1.dp, colors.cardBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 palette.forEach { color ->
+                                    val isSelected = selectedColor == color
                                     Box(
                                         modifier = Modifier
-                                            .size(28.dp)
+                                            .size(32.dp)
                                             .clip(CircleShape)
                                             .background(color)
-                                            .clickable {
-                                                selectedColor = color
-                                                showColorPalette = false
-                                            },
+                                            .border(
+                                                width = if (isSelected) 2.5.dp else 0.dp,
+                                                color = if (isSelected) Color.White.copy(alpha = 0.9f) else Color.Transparent,
+                                                shape = CircleShape
+                                            )
+                                            .clickable { selectedColor = color },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        if (selectedColor == color) {
+                                        if (isSelected) {
                                             Icon(
-                                                Icons.Default.Check,
+                                                imageVector = Icons.Default.Check,
                                                 contentDescription = null,
                                                 tint = Color.White,
                                                 modifier = Modifier.size(16.dp)
@@ -942,180 +1103,296 @@ fun SamsungEventBottomSheet(
                                 }
                             }
                         }
+
+                        // 3. DATA E ORARI (SCHEDA UNIFICATA ONE UI)
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = colors.surfaceSecondary,
+                            border = BorderStroke(1.dp, colors.cardBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                // Switch "Tutto il giorno"
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Tutto il giorno",
+                                        fontSize = 14.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.textPrimary
+                                    )
+
+                                    Switch(
+                                        checked = isAllDay,
+                                        onCheckedChange = { isAllDay = it },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.White,
+                                            checkedTrackColor = selectedColor,
+                                            uncheckedThumbColor = colors.textSecondary,
+                                            uncheckedTrackColor = colors.cardBorder
+                                        )
+                                    )
+                                }
+
+                                HorizontalDivider(
+                                    color = colors.cardBorder.copy(alpha = 0.5f),
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+
+                                // Riga Inizio
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Inizio",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = colors.textSecondary
+                                    )
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = colors.dialogBackground,
+                                            border = BorderStroke(1.dp, colors.cardBorder),
+                                            modifier = Modifier.clickable { showStartDatePicker = true }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.CalendarToday,
+                                                    contentDescription = null,
+                                                    tint = selectedColor,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Text(
+                                                    text = formatDate(startDate),
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = colors.textPrimary
+                                                )
+                                            }
+                                        }
+
+                                        if (!isAllDay) {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = colors.dialogBackground,
+                                                border = BorderStroke(1.dp, colors.cardBorder),
+                                                modifier = Modifier.clickable { showStartTimePicker = true }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.Schedule,
+                                                        contentDescription = null,
+                                                        tint = selectedColor,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                    Text(
+                                                        text = startTime.format(timeFormatter),
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = colors.textPrimary
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                HorizontalDivider(
+                                    color = colors.cardBorder.copy(alpha = 0.5f),
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+
+                                // Riga Fine
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Fine",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = colors.textSecondary
+                                    )
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = colors.dialogBackground,
+                                            border = BorderStroke(1.dp, colors.cardBorder),
+                                            modifier = Modifier.clickable { showEndDatePicker = true }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.CalendarToday,
+                                                    contentDescription = null,
+                                                    tint = selectedColor,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Text(
+                                                    text = formatDate(endDate),
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = colors.textPrimary
+                                                )
+                                            }
+                                        }
+
+                                        if (!isAllDay) {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = colors.dialogBackground,
+                                                border = BorderStroke(1.dp, colors.cardBorder),
+                                                modifier = Modifier.clickable { showEndTimePicker = true }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.Schedule,
+                                                        contentDescription = null,
+                                                        tint = selectedColor,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                    Text(
+                                                        text = endTime.format(timeFormatter),
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = colors.textPrimary
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 4. ELIMINA EVENTO (SOLO SE MODIFICA)
+                        if (initialEvent != null) {
+                            Button(
+                                onClick = { onDelete(initialEvent) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(46.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFEF4444).copy(alpha = 0.12f),
+                                    contentColor = Color(0xFFEF4444)
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Delete,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Elimina evento",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
-                }
-            }
 
-            HorizontalDivider(
-                color = colors.textSecondary.copy(alpha = 0.2f),
-                thickness = 1.dp,
-                modifier = Modifier.padding(vertical = 12.dp)
-            )
+                    HorizontalDivider(color = colors.cardBorder)
+                    Spacer(modifier = Modifier.height(14.dp))
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Schedule,
-                        contentDescription = null,
-                        tint = colors.textSecondary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Text(
-                        text = "Tutto il giorno",
-                        fontSize = 17.sp,
-                        color = colors.textPrimary,
-                        fontWeight = FontWeight.Normal
-                    )
-                }
-
-                Switch(
-                    checked = isAllDay,
-                    onCheckedChange = { isAllDay = it },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = selectedColor,
-                        uncheckedThumbColor = colors.textSecondary,
-                        uncheckedTrackColor = colors.surfaceSecondary
-                    )
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable { showStartDatePicker = true }
-                ) {
-                    Text(
-                        text = formatDate(startDate),
-                        fontSize = 16.sp,
-                        color = colors.textPrimary,
-                        fontWeight = FontWeight.Medium
-                    )
-                    if (!isAllDay) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = startTime.format(timeFormatter),
-                            fontSize = 20.sp,
-                            color = colors.textPrimary,
-                            fontWeight = FontWeight.SemiBold,
+                    // AZIONI POPUP: ANNULLA & SALVA
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = onDismiss,
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { showStartTimePicker = true }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
+                                .weight(1f)
+                                .height(46.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.textButtonColors(
+                                containerColor = colors.surfaceSecondary,
+                                contentColor = colors.textSecondary
+                            )
+                        ) {
+                            Text(
+                                text = "Annulla",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
 
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null,
-                    tint = colors.textSecondary,
-                    modifier = Modifier.size(20.dp)
-                )
-
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable { showEndDatePicker = true }
-                ) {
-                    Text(
-                        text = formatDate(endDate),
-                        fontSize = 16.sp,
-                        color = colors.textPrimary,
-                        fontWeight = FontWeight.Medium
-                    )
-                    if (!isAllDay) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = endTime.format(timeFormatter),
-                            fontSize = 20.sp,
-                            color = colors.textPrimary,
-                            fontWeight = FontWeight.SemiBold,
+                        Button(
+                            onClick = {
+                                onSave(
+                                    CalendarEvent(
+                                        id = initialEvent?.id ?: java.util.UUID.randomUUID().toString(),
+                                        title = title.ifBlank { "Nuovo evento" },
+                                        isAllDay = isAllDay,
+                                        startDate = startDate,
+                                        endDate = endDate,
+                                        startTime = if (isAllDay) "" else startTime.format(timeFormatter),
+                                        endTime = if (isAllDay) "" else endTime.format(timeFormatter),
+                                        color = selectedColor
+                                    )
+                                )
+                            },
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { showEndTimePicker = true }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                                .weight(1f)
+                                .height(46.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = selectedColor,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text(
+                                text = "Salva",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
-                }
-            }
-
-            HorizontalDivider(
-                color = colors.textSecondary.copy(alpha = 0.2f),
-                thickness = 1.dp,
-                modifier = Modifier.padding(top = 24.dp, bottom = 20.dp)
-            )
-
-            Button(
-                onClick = {
-                    onSave(
-                        CalendarEvent(
-                            id = initialEvent?.id ?: java.util.UUID.randomUUID().toString(),
-                            title = title.ifBlank { "Nuovo evento" },
-                            isAllDay = isAllDay,
-                            startDate = startDate,
-                            endDate = endDate,
-                            startTime = if (isAllDay) "" else startTime.format(timeFormatter),
-                            endTime = if (isAllDay) "" else endTime.format(timeFormatter),
-                            color = selectedColor
-                        )
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(containerColor = selectedColor)
-            ) {
-                Text(
-                    text = if (initialEvent != null) "Salva modifiche" else "Salva",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            if (initialEvent != null) {
-                Spacer(modifier = Modifier.height(10.dp))
-                OutlinedButton(
-                    onClick = { onDelete(initialEvent) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = CircleShape,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE55353).copy(alpha = 0.5f)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE55353))
-                ) {
-                    Icon(
-                        Icons.Outlined.Delete,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Elimina evento",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
                 }
             }
         }
     }
 
+    // Picker data inizio Material 3
     if (showStartDatePicker) {
         val datePickerState = rememberDatePickerState(
             initialSelectedDateMillis = startDate.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
@@ -1130,7 +1407,7 @@ fun SamsungEventBottomSheet(
                         if (endDate.isBefore(selected)) endDate = selected
                     }
                     showStartDatePicker = false
-                }) { Text("OK", color = colors.accent) }
+                }) { Text("OK", color = selectedColor) }
             },
             dismissButton = {
                 TextButton(onClick = { showStartDatePicker = false }) { Text("Annulla", color = colors.textSecondary) }
@@ -1139,6 +1416,7 @@ fun SamsungEventBottomSheet(
         ) { DatePicker(state = datePickerState) }
     }
 
+    // Picker data fine Material 3
     if (showEndDatePicker) {
         val datePickerState = rememberDatePickerState(
             initialSelectedDateMillis = endDate.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
@@ -1152,7 +1430,7 @@ fun SamsungEventBottomSheet(
                         endDate = if (selected.isBefore(startDate)) startDate else selected
                     }
                     showEndDatePicker = false
-                }) { Text("OK", color = colors.accent) }
+                }) { Text("OK", color = selectedColor) }
             },
             dismissButton = {
                 TextButton(onClick = { showEndDatePicker = false }) { Text("Annulla", color = colors.textSecondary) }
@@ -1161,53 +1439,42 @@ fun SamsungEventBottomSheet(
         ) { DatePicker(state = datePickerState) }
     }
 
+    // Picker orario inizio a scorrimento stile Samsung Orologio
     if (showStartTimePicker) {
-        val timePickerState = rememberTimePickerState(
-            initialHour = startTime.hour,
-            initialMinute = startTime.minute,
-            is24Hour = true
-        )
-        AlertDialog(
-            onDismissRequest = { showStartTimePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    startTime = LocalTime.of(timePickerState.hour, timePickerState.minute)
-                    if (startDate == endDate && endTime.isBefore(startTime)) {
-                        endTime = startTime.plusHours(1)
-                    }
-                    showStartTimePicker = false
-                }) { Text("OK", color = colors.accent) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showStartTimePicker = false }) { Text("Annulla", color = colors.textSecondary) }
-            },
-            text = { TimePicker(state = timePickerState) },
-            containerColor = colors.dialogBackground
+        SamsungTimeWheelPickerDialog(
+            initialTime = startTime,
+            onDismiss = { showStartTimePicker = false },
+            onConfirm = { newTime ->
+                startTime = newTime
+                if (startDate == endDate && endTime.isBefore(startTime)) {
+                    endTime = startTime.plusHours(1)
+                }
+                showStartTimePicker = false
+            }
         )
     }
 
+    // Picker orario fine a scorrimento stile Samsung Orologio
     if (showEndTimePicker) {
-        val timePickerState = rememberTimePickerState(
-            initialHour = endTime.hour,
-            initialMinute = endTime.minute,
-            is24Hour = true
-        )
-        AlertDialog(
-            onDismissRequest = { showEndTimePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    endTime = LocalTime.of(timePickerState.hour, timePickerState.minute)
-                    showEndTimePicker = false
-                }) { Text("OK", color = colors.accent) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEndTimePicker = false }) { Text("Annulla", color = colors.textSecondary) }
-            },
-            text = { TimePicker(state = timePickerState) },
-            containerColor = colors.dialogBackground
+        SamsungTimeWheelPickerDialog(
+            initialTime = endTime,
+            onDismiss = { showEndTimePicker = false },
+            onConfirm = { newTime ->
+                endTime = newTime
+                showEndTimePicker = false
+            }
         )
     }
 }
+
+@Composable
+fun SamsungEventBottomSheet(
+    selectedDate: LocalDate,
+    initialEvent: CalendarEvent? = null,
+    onDismiss: () -> Unit,
+    onSave: (CalendarEvent) -> Unit,
+    onDelete: (CalendarEvent) -> Unit = {}
+) = SamsungEventDialog(selectedDate, initialEvent, onDismiss, onSave, onDelete)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1337,4 +1604,283 @@ fun TrashBottomSheet(
             }
         }
     }
+}
+
+// =========================================================================
+// CARD PROMEMORIA NEL CALENDARIO (NON MODIFICABILE COME EVENTO)
+// =========================================================================
+
+@Composable
+fun CalendarReminderCard(
+    reminder: ReminderItem,
+    onToggle: (Boolean) -> Unit,
+    onClick: () -> Unit
+) {
+    val colors = LocalOneUIColors.current
+    val visualInfo = remember(reminder.associatedFunction) {
+        if (!reminder.associatedFunction.isNullOrBlank()) {
+            getFunctionVisualInfo(reminder.associatedFunction)
+        } else {
+            Triple("Promemoria", Icons.Outlined.Notifications, Color(0xFFF59E0B))
+        }
+    }
+    val icon = visualInfo.second
+    val accentTint = visualInfo.third
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = colors.surfaceSecondary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(accentTint.copy(alpha = if (colors.isDark) 0.20f else 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (reminder.isEnabled) accentTint else colors.textMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = reminder.title,
+                            color = if (reminder.isEnabled) colors.textPrimary else colors.textMuted,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    color = accentTint.copy(alpha = if (colors.isDark) 0.18f else 0.10f),
+                                    shape = RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = "Promemoria",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = accentTint
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val timeStr = reminder.time.format(DateTimeFormatter.ofPattern("HH:mm"))
+                        Text(
+                            text = timeStr,
+                            color = colors.textSecondary,
+                            fontSize = 12.sp
+                        )
+
+                        if (reminder.isRecurring) {
+                            Text(
+                                text = "•",
+                                color = colors.textMuted,
+                                fontSize = 11.sp
+                            )
+                            Icon(
+                                imageVector = Icons.Outlined.Repeat,
+                                contentDescription = "Ricorrente",
+                                tint = colors.textSecondary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = formatRecurringDays(reminder.recurringDays),
+                                color = colors.textSecondary,
+                                fontSize = 11.5.sp
+                            )
+                        } else if (!reminder.associatedFunction.isNullOrBlank()) {
+                            Text(
+                                text = "•",
+                                color = colors.textMuted,
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                text = visualInfo.first,
+                                color = colors.textSecondary,
+                                fontSize = 11.5.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            Switch(
+                checked = reminder.isEnabled,
+                onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = accentTint,
+                    uncheckedThumbColor = colors.textSecondary,
+                    uncheckedTrackColor = colors.surfaceSecondary
+                ),
+                modifier = Modifier.scale(0.80f)
+            )
+        }
+    }
+}
+
+@Composable
+fun ReminderDetailsDialog(
+    reminder: ReminderItem,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalOneUIColors.current
+    val visualInfo = remember(reminder.associatedFunction) {
+        if (!reminder.associatedFunction.isNullOrBlank()) {
+            getFunctionVisualInfo(reminder.associatedFunction)
+        } else {
+            Triple("Promemoria", Icons.Outlined.Notifications, Color(0xFFF59E0B))
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.dialogBackground,
+        shape = RoundedCornerShape(26.dp),
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(visualInfo.third.copy(alpha = if (colors.isDark) 0.22f else 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = visualInfo.second,
+                        contentDescription = null,
+                        tint = visualInfo.third,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Column {
+                    Text(
+                        text = reminder.title,
+                        color = colors.textPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Promemoria (Non modificabile come evento)",
+                        color = colors.textMuted,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Orario", color = colors.textSecondary, fontSize = 13.sp)
+                    Text(
+                        reminder.time.format(DateTimeFormatter.ofPattern("HH:mm")),
+                        color = colors.textPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Pianificazione", color = colors.textSecondary, fontSize = 13.sp)
+                    Text(
+                        if (reminder.isRecurring) "Ricorrente (${formatRecurringDays(reminder.recurringDays)})"
+                        else reminder.date?.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")) ?: "Giornaliero",
+                        color = colors.textPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                if (reminder.hasLeadTime) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Notifica anticipata", color = colors.textSecondary, fontSize = 13.sp)
+                        Text(
+                            "${reminder.leadTimeMinutes} min prima",
+                            color = colors.textPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                if (!reminder.associatedFunction.isNullOrBlank()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Funzione collegata", color = colors.textSecondary, fontSize = 13.sp)
+                        Text(
+                            visualInfo.first,
+                            color = visualInfo.third,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Stato", color = colors.textSecondary, fontSize = 13.sp)
+                    Text(
+                        if (reminder.isEnabled) "Attivo" else "Disattivato",
+                        color = if (reminder.isEnabled) Color(0xFF10B981) else colors.textMuted,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = colors.accent),
+                shape = CircleShape
+            ) {
+                Text("Chiudi", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+    )
 }

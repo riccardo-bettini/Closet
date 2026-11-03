@@ -18,6 +18,11 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import com.example.closet.ui.viewmodel.ClosetSwipeDirection
+import kotlin.math.abs
+
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -167,7 +172,9 @@ fun WardrobeHeaderControls(
     onShowSortMenuChange: (Boolean) -> Unit,
     onSelectSortOrder: (ClothingSortOrder) -> Unit,
     viewMode: ViewMode,
-    onViewModeChange: (ViewMode) -> Unit
+    onViewModeChange: (ViewMode) -> Unit,
+    isSwipeEnabled: Boolean = true,
+    swipeDirection: ClosetSwipeDirection = ClosetSwipeDirection.VERTICAL
 ) {
     val colors = LocalOneUIColors.current
 
@@ -194,11 +201,65 @@ fun WardrobeHeaderControls(
                 border = BorderStroke(1.dp, borderColor),
                 modifier = Modifier
                     .height(38.dp)
-                    .clickable {
-                        if (isEditMode) {
-                            onShowSortMenuChange(true)
+                    .pointerInput(isEditMode, isSwipeEnabled, swipeDirection, availableClosets, selectedCloset) {
+                        if (isEditMode || !isSwipeEnabled || availableClosets.size <= 1) {
+                            detectTapGestures {
+                                if (isEditMode) {
+                                    onShowSortMenuChange(true)
+                                } else {
+                                    onShowClosetMenuChange(true)
+                                }
+                            }
                         } else {
-                            onShowClosetMenuChange(true)
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                var totalDx = 0f
+                                var totalDy = 0f
+                                var isDrag = false
+                                val touchSlop = viewConfiguration.touchSlop
+                                val swipeThreshold = touchSlop * 2.2f
+
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (!change.pressed) {
+                                        if (!isDrag) {
+                                            onShowClosetMenuChange(true)
+                                        }
+                                        break
+                                    }
+                                    val dragDelta = change.position - change.previousPosition
+                                    totalDx += dragDelta.x
+                                    totalDy += dragDelta.y
+
+                                    val isHorizontalMode = swipeDirection == ClosetSwipeDirection.HORIZONTAL
+                                    val relevantDelta = if (isHorizontalMode) totalDx else totalDy
+                                    val perpendicularDelta = if (isHorizontalMode) totalDy else totalDx
+
+                                    if (!isDrag && (abs(relevantDelta) > touchSlop || abs(perpendicularDelta) > touchSlop)) {
+                                        isDrag = true
+                                    }
+
+                                    if (abs(relevantDelta) > swipeThreshold && abs(relevantDelta) > abs(perpendicularDelta) * 1.2f) {
+                                        change.consume()
+                                        val currentIndex = availableClosets.indexOf(selectedCloset).takeIf { it != -1 } ?: 0
+                                        val nextCloset = if (relevantDelta < 0) {
+                                            availableClosets[(currentIndex + 1) % availableClosets.size]
+                                        } else {
+                                            availableClosets[(currentIndex - 1 + availableClosets.size) % availableClosets.size]
+                                        }
+                                        if (nextCloset != selectedCloset) {
+                                            onSelectCloset(nextCloset)
+                                        }
+                                        while (true) {
+                                            val upEvent = awaitPointerEvent()
+                                            val upChange = upEvent.changes.firstOrNull { it.id == down.id } ?: break
+                                            if (!upChange.pressed) break
+                                        }
+                                        break
+                                    }
+                                }
+                            }
                         }
                     }
             ) {
@@ -259,12 +320,26 @@ fun WardrobeHeaderControls(
                                 tint = colors.accent,
                                 modifier = Modifier.size(16.dp)
                             )
-                            Text(
-                                text = selectedCloset,
-                                color = colors.textPrimary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            AnimatedContent(
+                                targetState = selectedCloset,
+                                transitionSpec = {
+                                    if (swipeDirection == ClosetSwipeDirection.VERTICAL) {
+                                        (slideInVertically { h -> h / 2 } + fadeIn(tween(180)))
+                                            .togetherWith(slideOutVertically { h -> -h / 2 } + fadeOut(tween(120)))
+                                    } else {
+                                        (slideInHorizontally { w -> w / 2 } + fadeIn(tween(180)))
+                                            .togetherWith(slideOutHorizontally { w -> -w / 2 } + fadeOut(tween(120)))
+                                    }
+                                },
+                                label = "closetNameTransition"
+                            ) { closetName ->
+                                Text(
+                                    text = closetName,
+                                    color = colors.textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                             Icon(
                                 imageVector = Icons.Default.ArrowDropDown,
                                 contentDescription = null,
@@ -883,7 +958,9 @@ fun WardrobeScreen(
                                     onViewModeChange = { newMode ->
                                         viewMode = newMode
                                         prefs.edit().putString("wardrobe_view_mode", newMode.name).apply()
-                                    }
+                                    },
+                                    isSwipeEnabled = viewModel.isClosetSwipeChangeEnabled,
+                                    swipeDirection = viewModel.closetSwipeDirection
                                 )
                             }
                         }
@@ -1207,7 +1284,9 @@ fun WardrobeScreen(
                                     onViewModeChange = { newMode ->
                                         viewMode = newMode
                                         prefs.edit().putString("wardrobe_view_mode", newMode.name).apply()
-                                    }
+                                    },
+                                    isSwipeEnabled = viewModel.isClosetSwipeChangeEnabled,
+                                    swipeDirection = viewModel.closetSwipeDirection
                                 )
                             }
                         }

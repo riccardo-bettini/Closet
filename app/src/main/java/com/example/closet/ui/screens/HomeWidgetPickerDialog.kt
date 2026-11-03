@@ -152,7 +152,7 @@ fun WidgetPickerDialog(
             WidgetCategoryGroup(
                 id = "CLOCK_TOOLS",
                 title = "Orologio & Strumenti",
-                subtitle = "Orologi, torcia LED e bussola magnetica",
+                subtitle = "Orologi, torcia LED, bussola e livella",
                 icon = Icons.Outlined.Construction,
                 accentColor = Color(0xFFEAB308),
                 widgets = listOf(
@@ -168,7 +168,11 @@ fun WidgetPickerDialog(
                     WidgetType.UTILITY_COMPASS_1X1,
                     WidgetType.UTILITY_COMPASS_1X2,
                     WidgetType.UTILITY_COMPASS_2X2,
-                    WidgetType.UTILITY_COMPASS_2X4
+                    WidgetType.UTILITY_COMPASS_2X4,
+                    WidgetType.UTILITY_LEVEL_1X1,
+                    WidgetType.UTILITY_LEVEL_1X2,
+                    WidgetType.UTILITY_LEVEL_2X2,
+                    WidgetType.UTILITY_LEVEL_2X4
                 )
             )
         )
@@ -767,6 +771,11 @@ private fun WidgetLivePreviewContent(
         WidgetType.UTILITY_COMPASS_1X2 -> UtilityCompassWidget1x2()
         WidgetType.UTILITY_COMPASS_2X2 -> UtilityCompassWidget2x2()
         WidgetType.UTILITY_COMPASS_2X4 -> UtilityCompassWidget2x4()
+
+        WidgetType.UTILITY_LEVEL_1X1 -> UtilityLevelWidget1x1()
+        WidgetType.UTILITY_LEVEL_1X2 -> UtilityLevelWidget1x2()
+        WidgetType.UTILITY_LEVEL_2X2 -> UtilityLevelWidget2x2()
+        WidgetType.UTILITY_LEVEL_2X4 -> UtilityLevelWidget2x4()
 
         WidgetType.CLOCK_DIGITAL_1X2 -> ClockDigitalWidget1x2()
         WidgetType.CLOCK_DIGITAL_2X2 -> ClockDigitalWidget2x2()

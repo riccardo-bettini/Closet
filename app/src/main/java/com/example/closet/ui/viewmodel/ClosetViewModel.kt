@@ -30,6 +30,9 @@ import com.example.closet.ui.screens.compactFavoriteRows
 import com.example.closet.ui.screens.normalizeEmoji
 import com.example.closet.ui.screens.normalizeGridPlacements
 import com.example.closet.ui.screens.normalizeIslandTabs
+import com.example.closet.ui.reminder.ReminderItem
+import com.example.closet.ui.reminder.ReminderScheduler
+import com.example.closet.ui.reminder.ReminderStorage
 import com.example.closet.ui.updater.AppUpdateManager
 import com.example.closet.ui.updater.GitHubReleaseInfo
 import kotlinx.coroutines.Dispatchers
@@ -90,6 +93,11 @@ enum class TripEndAction(val label: String) {
     GO_TO_LAUNDRY("Invia alla funzione Panni")
 }
 
+enum class ClosetSwipeDirection(val label: String) {
+    VERTICAL("Su / Giù"),
+    HORIZONTAL("Destra / Sinistra")
+}
+
 data class TripItemOrigin(
     val itemId: String,
     val itemName: String,
@@ -136,6 +144,9 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
     var startupUpdateRelease by mutableStateOf<GitHubReleaseInfo?>(null)
         private set
 
+    var showReleaseNotesDialog by mutableStateOf(false)
+        private set
+
     private var hasCheckedStartupUpdate = false
 
     var homeLayoutMode by mutableStateOf(HomeLayoutMode.PAGED)
@@ -147,7 +158,7 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
     var homePageIndicatorVisibility by mutableStateOf(PageIndicatorVisibility.ON_SCROLL)
         private set
 
-    var homePageIndicatorPosition by mutableStateOf(PageIndicatorPosition.RIGHT)
+    var homePageIndicatorPosition by mutableStateOf(PageIndicatorPosition.BOTTOM)
         private set
 
     var homeWidgets = mutableStateListOf<PlacedWidget>()
@@ -332,11 +343,24 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
 
     val trashEvents = mutableStateListOf<CalendarEvent>()
 
+    // PROMEMORIA (REMINDERS)
+    val reminders = mutableStateListOf<ReminderItem>()
+    var notificationsSoundEnabled by mutableStateOf(true)
+        private set
+    var notificationsVibrationEnabled by mutableStateOf(true)
+        private set
+    var isClosetSwipeChangeEnabled by mutableStateOf(true)
+        private set
+    var closetSwipeDirection by mutableStateOf(ClosetSwipeDirection.VERTICAL)
+        private set
+    var pendingNavigationFunction by mutableStateOf<String?>(null)
+
     init {
         loadTheme()
         loadAccentColor()
         loadFunctionColorsSetting()
         loadAutoCheckUpdatesSetting()
+        loadClosetSwipeSettings()
         loadHomeConfig()
         loadWidgets()
         loadClosets()
@@ -352,6 +376,8 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
         loadActiveTrip()
         loadCalendarEvents()
         loadTrashEvents()
+        loadReminders()
+        loadNotificationSettings()
         startPeriodicCheckLoop()
         islandTabs.clear()
         islandTabs.addAll(loadIslandTabsFromPrefs())
@@ -893,6 +919,22 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
 
     fun dismissStartupUpdateDialog() {
         startupUpdateRelease = null
+    }
+
+    fun checkReleaseNotes(currentVersionName: String) {
+        val lastSeen = prefs.getString("pref_last_seen_release_notes_version", null)
+        if (lastSeen != currentVersionName) {
+            showReleaseNotesDialog = true
+        }
+    }
+
+    fun dismissReleaseNotes(currentVersionName: String) {
+        showReleaseNotesDialog = false
+        prefs.edit().putString("pref_last_seen_release_notes_version", currentVersionName).apply()
+    }
+
+    fun openReleaseNotesManually() {
+        showReleaseNotesDialog = true
     }
 
     fun setClosetPhoto(closetName: String, uri: Uri?) {
@@ -1502,6 +1544,12 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
         customAccentColor = null
         useDistinctFunctionColors = true
         autoCheckUpdatesOnStartup = true
+        isClosetSwipeChangeEnabled = true
+        closetSwipeDirection = ClosetSwipeDirection.VERTICAL
+        prefs.edit()
+            .putBoolean("closet_swipe_change_enabled", true)
+            .putString("closet_swipe_direction", ClosetSwipeDirection.VERTICAL.name)
+            .apply()
         functionOrder.clear()
         functionOrder.addAll(
             listOf(
@@ -1583,7 +1631,7 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
     fun updateHomePageIndicatorPosition(position: PageIndicatorPosition) {
         if (homePageIndicatorPosition != position) {
             homePageIndicatorPosition = position
-            prefs.edit().putString("pref_home_page_indicator_position", position.name).apply()
+            prefs.edit().putString("pref_home_page_indicator_position_v2", position.name).apply()
         }
     }
 
@@ -1600,10 +1648,14 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
             PageIndicatorVisibility.valueOf(visStr ?: PageIndicatorVisibility.ON_SCROLL.name)
         }.getOrDefault(PageIndicatorVisibility.ON_SCROLL)
 
-        val posStr = prefs.getString("pref_home_page_indicator_position", PageIndicatorPosition.RIGHT.name)
-        homePageIndicatorPosition = runCatching {
-            PageIndicatorPosition.valueOf(posStr ?: PageIndicatorPosition.RIGHT.name)
-        }.getOrDefault(PageIndicatorPosition.RIGHT)
+        val posStr = prefs.getString("pref_home_page_indicator_position_v2", null)
+        homePageIndicatorPosition = if (posStr != null) {
+            runCatching {
+                PageIndicatorPosition.valueOf(posStr)
+            }.getOrDefault(PageIndicatorPosition.BOTTOM)
+        } else {
+            PageIndicatorPosition.BOTTOM
+        }
     }
 
     private fun reorganizeWidgetsForMode(mode: HomeLayoutMode, maxRows: Int) {
@@ -2110,6 +2162,24 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    var toolsOrder by mutableStateOf<List<String>>(loadToolsOrder())
+        private set
+
+    private fun loadToolsOrder(): List<String> {
+        val defaultList = listOf("tool_torch", "tool_compass", "tool_level", "tool_clock", "tool_stopwatch", "tool_timer")
+        val saved = prefs.getString("tools_custom_order", null) ?: return defaultList
+        val parsed = saved.split(",").filter { it.isNotBlank() }
+        val allValid = defaultList.toSet()
+        val result = parsed.filter { it in allValid }.toMutableList()
+        defaultList.forEach { if (it !in result) result.add(it) }
+        return result
+    }
+
+    fun updateToolsOrder(newOrder: List<String>) {
+        toolsOrder = newOrder
+        prefs.edit().putString("tools_custom_order", newOrder.joinToString(",")).apply()
+    }
+
     fun moveItemsToTarget(
         itemIds: Set<String>,
         targetCloset: String,
@@ -2315,5 +2385,91 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
                 clothingItems.clear()
             }
         }
+    }
+
+    // =========================================================================
+    // GESTIONE PROMEMORIA (REMINDER)
+    // =========================================================================
+
+    fun loadReminders() {
+        reminders.clear()
+        reminders.addAll(ReminderStorage.loadReminders(getApplication()))
+    }
+
+    fun saveReminders() {
+        ReminderStorage.saveReminders(getApplication(), reminders.toList())
+    }
+
+    fun loadNotificationSettings() {
+        notificationsSoundEnabled = ReminderStorage.isSoundEnabled(getApplication())
+        notificationsVibrationEnabled = ReminderStorage.isVibrationEnabled(getApplication())
+    }
+
+    fun setNotificationsSound(enabled: Boolean) {
+        notificationsSoundEnabled = enabled
+        ReminderStorage.setSoundEnabled(getApplication(), enabled)
+    }
+
+    fun setNotificationsVibration(enabled: Boolean) {
+        notificationsVibrationEnabled = enabled
+        ReminderStorage.setVibrationEnabled(getApplication(), enabled)
+    }
+
+    fun addReminder(item: ReminderItem) {
+        reminders.add(item)
+        saveReminders()
+        ReminderScheduler.scheduleReminder(getApplication(), item)
+    }
+
+    fun updateReminder(item: ReminderItem) {
+        val index = reminders.indexOfFirst { it.id == item.id }
+        if (index != -1) {
+            reminders[index] = item
+            saveReminders()
+            ReminderScheduler.scheduleReminder(getApplication(), item)
+        }
+    }
+
+    fun deleteReminder(id: String) {
+        val index = reminders.indexOfFirst { it.id == id }
+        if (index != -1) {
+            val item = reminders.removeAt(index)
+            saveReminders()
+            ReminderScheduler.cancelReminder(getApplication(), item)
+        }
+    }
+
+    fun toggleReminder(id: String, enabled: Boolean) {
+        val index = reminders.indexOfFirst { it.id == id }
+        if (index != -1) {
+            val updated = reminders[index].copy(isEnabled = enabled)
+            reminders[index] = updated
+            saveReminders()
+            if (enabled) {
+                ReminderScheduler.scheduleReminder(getApplication(), updated)
+            } else {
+                ReminderScheduler.cancelReminder(getApplication(), updated)
+            }
+        }
+    }
+
+    private fun loadClosetSwipeSettings() {
+        isClosetSwipeChangeEnabled = prefs.getBoolean("closet_swipe_change_enabled", true)
+        val savedDir = prefs.getString("closet_swipe_direction", null) ?: ClosetSwipeDirection.VERTICAL.name
+        closetSwipeDirection = try {
+            ClosetSwipeDirection.valueOf(savedDir)
+        } catch (e: Exception) {
+            ClosetSwipeDirection.VERTICAL
+        }
+    }
+
+    fun updateClosetSwipeChangeEnabled(enabled: Boolean) {
+        isClosetSwipeChangeEnabled = enabled
+        prefs.edit().putBoolean("closet_swipe_change_enabled", enabled).apply()
+    }
+
+    fun updateClosetSwipeDirection(direction: ClosetSwipeDirection) {
+        closetSwipeDirection = direction
+        prefs.edit().putString("closet_swipe_direction", direction.name).apply()
     }
 }

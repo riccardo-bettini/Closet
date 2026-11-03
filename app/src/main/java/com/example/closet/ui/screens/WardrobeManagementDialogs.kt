@@ -254,20 +254,12 @@ fun ManageClosetsDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "Gestione armadi",
-                            color = colors.textPrimary,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        Text(
-                            text = "${draftClosets.size} armadi • Usa ≡ o tieni premuto per riordinare",
-                            color = colors.textSecondary,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    Text(
+                        text = "Gestione armadi",
+                        color = colors.textPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
 
                     Surface(
                         shape = CircleShape,
@@ -1181,20 +1173,12 @@ fun ManageTagsDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "Gestione tag",
-                            color = colors.textPrimary,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        Text(
-                            text = "${draftTags.size} tag • Usa ≡ o tieni premuto per riordinare",
-                            color = colors.textSecondary,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    Text(
+                        text = "Gestione tag",
+                        color = colors.textPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
 
                     Surface(
                         shape = CircleShape,

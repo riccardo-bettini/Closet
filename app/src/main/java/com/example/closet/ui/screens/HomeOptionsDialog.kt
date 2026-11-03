@@ -7,11 +7,14 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -343,19 +346,27 @@ fun HomeOptionsDialog(
                             )
                         }
 
-                        // POSIZIONE INDICATORE (Sinistra, Destra)
+                        // POSIZIONE INDICATORE (In basso, Destra, Sinistra)
                         HomeOptionSection(
                             icon = Icons.Outlined.ViewSidebar,
                             title = "Posizione indicatore"
                         ) {
-                            val positionOptions = listOf("Sinistra", "Destra")
-                            val selectedPosIndex = if (viewModel.homePageIndicatorPosition == PageIndicatorPosition.LEFT) 0 else 1
+                            val positionOptions = listOf("In basso", "Destra", "Sinistra")
+                            val selectedPosIndex = when (viewModel.homePageIndicatorPosition) {
+                                PageIndicatorPosition.BOTTOM -> 0
+                                PageIndicatorPosition.RIGHT -> 1
+                                PageIndicatorPosition.LEFT -> 2
+                            }
                             OneUISegmentedSlider(
                                 options = positionOptions,
                                 selectedIndex = selectedPosIndex,
                                 enabled = isPaged,
                                 onSelectIndex = { index ->
-                                    val pos = if (index == 0) PageIndicatorPosition.LEFT else PageIndicatorPosition.RIGHT
+                                    val pos = when (index) {
+                                        0 -> PageIndicatorPosition.BOTTOM
+                                        1 -> PageIndicatorPosition.RIGHT
+                                        else -> PageIndicatorPosition.LEFT
+                                    }
                                     viewModel.updateHomePageIndicatorPosition(pos)
                                 }
                             )
@@ -425,13 +436,19 @@ private fun HomeOptionSection(
 // =========================================================================
 
 @Composable
-fun VerticalPageIndicator(
+fun HomePageIndicator(
     pageCount: Int,
     currentPage: Int,
     visibility: PageIndicatorVisibility,
     position: PageIndicatorPosition,
     isScrollInProgress: Boolean,
     isEditMode: Boolean,
+    isDragging: Boolean = false,
+    bottomOffset: androidx.compose.ui.unit.Dp = 76.dp,
+    onDragStart: () -> Unit = {},
+    onDragDelta: (Float) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    onDragCancel: () -> Unit = {},
     onPageClick: (Int) -> Unit = {}
 ) {
     if (pageCount <= 1 || visibility == PageIndicatorVisibility.NEVER) return
@@ -439,8 +456,8 @@ fun VerticalPageIndicator(
     val colors = LocalOneUIColors.current
     var isVisibleByScroll by remember { mutableStateOf(false) }
 
-    LaunchedEffect(isScrollInProgress) {
-        if (isScrollInProgress) {
+    LaunchedEffect(isScrollInProgress, isDragging) {
+        if (isScrollInProgress || isDragging) {
             isVisibleByScroll = true
         } else {
             delay(1200)
@@ -451,7 +468,7 @@ fun VerticalPageIndicator(
     val targetAlpha = when (visibility) {
         PageIndicatorVisibility.NEVER -> 0f
         PageIndicatorVisibility.ALWAYS -> 1f
-        PageIndicatorVisibility.ON_SCROLL -> if (isVisibleByScroll || isEditMode) 1f else 0f
+        PageIndicatorVisibility.ON_SCROLL -> if (isVisibleByScroll || isEditMode || isDragging) 1f else 0f
     }
 
     val animatedAlpha by animateFloatAsState(
@@ -460,56 +477,306 @@ fun VerticalPageIndicator(
         label = "pageIndicatorFade"
     )
 
-    if (animatedAlpha <= 0.01f) return
+    if (animatedAlpha <= 0.01f && !isDragging) return
 
-    val alignment = if (position == PageIndicatorPosition.LEFT) Alignment.CenterStart else Alignment.CenterEnd
-    val paddingModifier = if (position == PageIndicatorPosition.LEFT) {
-        Modifier.padding(start = 5.dp)
-    } else {
-        Modifier.padding(end = 5.dp)
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .then(paddingModifier)
-            .graphicsLayer { alpha = animatedAlpha },
-        contentAlignment = alignment
-    ) {
-        Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = if (colors.isDark) Color(0x33000000) else Color(0x1F000000),
-            modifier = Modifier.wrapContentSize()
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 2.5.dp, vertical = 5.dp),
-                verticalArrangement = Arrangement.spacedBy(4.5.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+    when (position) {
+        PageIndicatorPosition.BOTTOM -> {
+            // INDICATORE IN BASSO (CENTRO DELLO SCHERMO SOPRA L'ISOLA) - STILE SAMSUNG ONE UI HOME
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = bottomOffset)
+                    .graphicsLayer { alpha = animatedAlpha },
+                contentAlignment = Alignment.BottomCenter
             ) {
-                for (i in 0 until pageCount) {
-                    val isSelected = i == currentPage
-                    val pillHeight by animateFloatAsState(
-                        targetValue = if (isSelected) 18f else 6f,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioLowBouncy,
-                            stiffness = Spring.StiffnessMediumLow
-                        ),
-                        label = "pillHeight_$i"
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    // Badge pagina fluttuante sopra i pallini durante lo scorrimento rapido
+                    AnimatedVisibility(
+                        visible = isDragging,
+                        enter = fadeIn(tween(150)) + scaleIn(spring(stiffness = Spring.StiffnessMediumLow)),
+                        exit = fadeOut(tween(150)) + scaleOut(spring(stiffness = Spring.StiffnessMediumLow))
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = colors.islandBackground,
+                            border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.6f)),
+                            shadowElevation = 8.dp,
+                            tonalElevation = 4.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Text(
+                                    text = "${currentPage + 1}",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = colors.accent
+                                )
+                                Text(
+                                    text = "/ $pageCount",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.textSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    // Contenitore pill/punti orizzontale
+                    val surfaceScale by animateFloatAsState(
+                        targetValue = if (isDragging) 1.12f else 1f,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                        label = "indicatorBottomSurfaceScale"
                     )
 
-                    Box(
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isDragging) colors.islandBackground else (if (colors.isDark) Color(0x33000000) else Color(0x1F000000)),
+                        border = if (isDragging) BorderStroke(1.dp, colors.accent.copy(alpha = 0.5f)) else null,
+                        tonalElevation = if (isDragging) 4.dp else 0.dp,
+                        shadowElevation = if (isDragging) 6.dp else 0.dp,
                         modifier = Modifier
-                            .width(4.dp)
-                            .height(pillHeight.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isSelected) colors.accent
-                                else colors.textSecondary.copy(alpha = if (colors.isDark) 0.45f else 0.35f)
-                            )
-                            .clickable { onPageClick(i) }
+                            .graphicsLayer {
+                                scaleX = surfaceScale
+                                scaleY = surfaceScale
+                            }
+                            .pointerInput(pageCount) {
+                                detectHorizontalDragGestures(
+                                    onDragStart = {
+                                        isVisibleByScroll = true
+                                        onDragStart()
+                                    },
+                                    onHorizontalDrag = { change, dragAmount ->
+                                        change.consume()
+                                        onDragDelta(dragAmount)
+                                    },
+                                    onDragEnd = { onDragEnd() },
+                                    onDragCancel = { onDragCancel() }
+                                )
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            for (i in 0 until pageCount) {
+                                val isSelected = i == currentPage
+                                val pillWidth by animateFloatAsState(
+                                    targetValue = if (isSelected) (if (isDragging) 22f else 16f) else 5f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioLowBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    ),
+                                    label = "pillWidthHoriz_$i"
+                                )
+                                val pillHeight by animateFloatAsState(
+                                    targetValue = if (isDragging && isSelected) 6f else 5f,
+                                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                                    label = "pillHeightHoriz_$i"
+                                )
+
+                                Box(
+                                    modifier = Modifier
+                                        .width(pillWidth.dp)
+                                        .height(pillHeight.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isSelected) colors.accent
+                                            else colors.textSecondary.copy(alpha = if (colors.isDark) 0.45f else 0.35f)
+                                        )
+                                        .clickable { onPageClick(i) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        PageIndicatorPosition.RIGHT, PageIndicatorPosition.LEFT -> {
+            // INDICATORE VERTICALE LATERALE (posizionato a bordo schermo nel margine, senza toccare i widget)
+            val isRight = position == PageIndicatorPosition.RIGHT
+            val alignment = if (isRight) Alignment.CenterEnd else Alignment.CenterStart
+            val paddingModifier = if (isRight) Modifier.padding(end = 2.dp) else Modifier.padding(start = 2.dp)
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(paddingModifier)
+                    .graphicsLayer { alpha = animatedAlpha },
+                contentAlignment = alignment
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (isRight) {
+                        // Badge pagina fluttuante posizionato alla sinistra dell'indicatore
+                        AnimatedVisibility(
+                            visible = isDragging,
+                            enter = fadeIn(tween(150)) + scaleIn(spring(stiffness = Spring.StiffnessMediumLow)),
+                            exit = fadeOut(tween(150)) + scaleOut(spring(stiffness = Spring.StiffnessMediumLow))
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = colors.islandBackground,
+                                border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.6f)),
+                                shadowElevation = 8.dp,
+                                tonalElevation = 4.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Text(
+                                        text = "${currentPage + 1}",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = colors.accent
+                                    )
+                                    Text(
+                                        text = "/ $pageCount",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.textSecondary
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Contenitore verticale
+                    val surfaceScale by animateFloatAsState(
+                        targetValue = if (isDragging) 1.15f else 1f,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                        label = "indicatorSurfaceScale"
                     )
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isDragging) colors.islandBackground else (if (colors.isDark) Color(0x33000000) else Color(0x1F000000)),
+                        border = if (isDragging) BorderStroke(1.dp, colors.accent.copy(alpha = 0.5f)) else null,
+                        tonalElevation = if (isDragging) 4.dp else 0.dp,
+                        shadowElevation = if (isDragging) 6.dp else 0.dp,
+                        modifier = Modifier
+                            .graphicsLayer {
+                                scaleX = surfaceScale
+                                scaleY = surfaceScale
+                            }
+                            .pointerInput(pageCount) {
+                                detectVerticalDragGestures(
+                                    onDragStart = {
+                                        isVisibleByScroll = true
+                                        onDragStart()
+                                    },
+                                    onVerticalDrag = { change, dragAmount ->
+                                        change.consume()
+                                        onDragDelta(dragAmount)
+                                    },
+                                    onDragEnd = { onDragEnd() },
+                                    onDragCancel = { onDragCancel() }
+                                )
+                            }
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 2.dp, vertical = 5.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.5.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            for (i in 0 until pageCount) {
+                                val isSelected = i == currentPage
+                                val pillHeight by animateFloatAsState(
+                                    targetValue = if (isSelected) (if (isDragging) 22f else 18f) else 5f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioLowBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    ),
+                                    label = "pillHeight_$i"
+                                )
+                                val pillWidth by animateFloatAsState(
+                                    targetValue = if (isDragging && isSelected) 5f else 3.5f,
+                                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                                    label = "pillWidth_$i"
+                                )
+
+                                Box(
+                                    modifier = Modifier
+                                        .width(pillWidth.dp)
+                                        .height(pillHeight.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isSelected) colors.accent
+                                            else colors.textSecondary.copy(alpha = if (colors.isDark) 0.45f else 0.35f)
+                                        )
+                                        .clickable { onPageClick(i) }
+                                )
+                            }
+                        }
+                    }
+
+                    if (!isRight) {
+                        // Badge pagina fluttuante posizionato alla destra dell'indicatore
+                        AnimatedVisibility(
+                            visible = isDragging,
+                            enter = fadeIn(tween(150)) + scaleIn(spring(stiffness = Spring.StiffnessMediumLow)),
+                            exit = fadeOut(tween(150)) + scaleOut(spring(stiffness = Spring.StiffnessMediumLow))
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = colors.islandBackground,
+                                border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.6f)),
+                                shadowElevation = 8.dp,
+                                tonalElevation = 4.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Text(
+                                        text = "${currentPage + 1}",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = colors.accent
+                                    )
+                                    Text(
+                                        text = "/ $pageCount",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.textSecondary
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 }
+
+@Composable
+fun VerticalPageIndicator(
+    pageCount: Int,
+    currentPage: Int,
+    visibility: PageIndicatorVisibility,
+    position: PageIndicatorPosition,
+    isScrollInProgress: Boolean,
+    isEditMode: Boolean,
+    isDragging: Boolean = false,
+    bottomOffset: androidx.compose.ui.unit.Dp = 76.dp,
+    onDragStart: () -> Unit = {},
+    onDragDelta: (Float) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    onDragCancel: () -> Unit = {},
+    onPageClick: (Int) -> Unit = {}
+) = HomePageIndicator(
+    pageCount, currentPage, visibility, position, isScrollInProgress, isEditMode, isDragging,
+    bottomOffset, onDragStart, onDragDelta, onDragEnd, onDragCancel, onPageClick
+)

@@ -105,54 +105,47 @@ fun CalendarTodayWidget2x1(viewModel: ClosetViewModel? = null) {
         today.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ITALIAN)
             .replaceFirstChar { it.uppercase() }
     }
-    val monthShort = remember(today) {
-        today.month.getDisplayName(TextStyle.SHORT, Locale.ITALIAN)
-            .replaceFirstChar { it.uppercase() }
-    }
     val todayEvents = viewModel?.eventsMap?.get(today) ?: emptyList()
 
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.weight(1f)
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(colors.accentContainer),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(colors.accentContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = today.dayOfMonth.toString(),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Black,
-                    color = colors.accent
-                )
-            }
+            Text(
+                text = today.dayOfMonth.toString(),
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Black,
+                color = colors.accent
+            )
+        }
 
-            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = dayName,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.textPrimary,
+                maxLines = 1
+            )
+            if (todayEvents.isNotEmpty()) {
                 Text(
-                    text = "$dayName, $monthShort",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = if (todayEvents.isEmpty()) "Nessun impegno"
-                    else if (todayEvents.size == 1) todayEvents.first().title
-                    else "${todayEvents.size} impegni oggi",
-                    fontSize = 11.sp,
-                    color = if (todayEvents.isEmpty()) colors.textSecondary else colors.accent,
+                    text = todayEvents.first().title,
+                    fontSize = 11.5.sp,
+                    color = colors.accent,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     modifier = Modifier.basicMarquee()
                 )
@@ -273,7 +266,10 @@ fun CalendarTodayWidget2x2(viewModel: ClosetViewModel? = null) {
 }
 
 @Composable
-fun CalendarMonthWidget2x2(viewModel: ClosetViewModel? = null) {
+fun CalendarMonthWidget2x2(
+    viewModel: ClosetViewModel? = null,
+    innerPadding: PaddingValues = PaddingValues(14.dp)
+) {
     val colors = LocalOneUIColors.current
     val today = remember { LocalDate.now() }
     val yearMonth = remember(today) { YearMonth.from(today) }
@@ -287,7 +283,7 @@ fun CalendarMonthWidget2x2(viewModel: ClosetViewModel? = null) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(14.dp),
+            .padding(innerPadding),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
@@ -326,8 +322,11 @@ fun CalendarMonthWidget2x2(viewModel: ClosetViewModel? = null) {
             }
         }
 
-        val totalCells = 35
-        for (week in 0 until 5) {
+        val totalCellsNeeded = firstDayOffset + daysInMonth
+        val totalWeeks = if (totalCellsNeeded > 35) 6 else 5
+        val cellSize = if (totalWeeks == 6) 11.5.dp else 14.dp
+        val dayFontSize = if (totalWeeks == 6) 7.sp else 8.5.sp
+        for (week in 0 until totalWeeks) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -335,14 +334,14 @@ fun CalendarMonthWidget2x2(viewModel: ClosetViewModel? = null) {
                 for (dow in 0 until 7) {
                     val cellIdx = week * 7 + dow
                     val dayNum = cellIdx - firstDayOffset + 1
-                    val isValidDay = dayNum in 1..daysInMonth && cellIdx < totalCells
+                    val isValidDay = dayNum in 1..daysInMonth
                     val isToday = isValidDay && dayNum == today.dayOfMonth
                     val hasEvent = isValidDay &&
                             (viewModel?.eventsMap?.get(yearMonth.atDay(dayNum))?.isNotEmpty() == true)
 
                     Box(
                         modifier = Modifier
-                            .size(16.dp)
+                            .size(cellSize)
                             .clip(CircleShape)
                             .background(
                                 when {
@@ -356,7 +355,7 @@ fun CalendarMonthWidget2x2(viewModel: ClosetViewModel? = null) {
                         if (isValidDay) {
                             Text(
                                 text = dayNum.toString(),
-                                fontSize = 8.5.sp,
+                                fontSize = dayFontSize,
                                 fontWeight = if (isToday || hasEvent) FontWeight.Bold else FontWeight.Normal,
                                 color = if (isToday) Color.White else colors.textPrimary,
                                 style = ComposeTextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false))
@@ -378,11 +377,11 @@ fun CalendarAgendaWidget4x2(viewModel: ClosetViewModel? = null) {
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .padding(14.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(11.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(modifier = Modifier.weight(1f)) {
-            CalendarMonthWidget2x2(viewModel)
+            CalendarMonthWidget2x2(viewModel, innerPadding = PaddingValues(0.dp))
         }
 
         Box(
@@ -431,10 +430,9 @@ fun CalendarAgendaWidget4x2(viewModel: ClosetViewModel? = null) {
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Text(
-                        text = "Nessun evento programmato per oggi.\nTocca per aprire il calendario.",
-                        fontSize = 11.sp,
-                        color = colors.textSecondary,
-                        lineHeight = 15.sp
+                        text = "Nessun evento oggi",
+                        fontSize = 12.sp,
+                        color = colors.textSecondary
                     )
                 }
             } else {
@@ -529,19 +527,13 @@ fun CalendarAddEventWidget1x2() {
                 modifier = Modifier.size(20.dp)
             )
         }
-        Column {
-            Text(
-                text = "Nuovo Evento",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary
-            )
-            Text(
-                text = "Pianifica outfit",
-                fontSize = 11.sp,
-                color = colors.textSecondary
-            )
-        }
+        Text(
+            text = "Nuovo Evento",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = colors.textPrimary,
+            maxLines = 1
+        )
     }
 }
 
@@ -754,16 +746,10 @@ fun WardrobeCountWidget2x4(viewModel: ClosetViewModel, targetCloset: String?) {
 
             Text(
                 text = items.size.toString(),
-                fontSize = 38.sp,
+                fontSize = 40.sp,
                 fontWeight = FontWeight.Black,
                 color = colors.textPrimary,
-                lineHeight = 40.sp
-            )
-
-            Text(
-                text = "Capi totali registrati",
-                fontSize = 12.sp,
-                color = colors.textSecondary
+                lineHeight = 42.sp
             )
         }
 
@@ -1142,19 +1128,13 @@ fun WardrobeSearchWidget1x2() {
                 modifier = Modifier.size(19.dp)
             )
         }
-        Column {
-            Text(
-                text = "Cerca capo",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary
-            )
-            Text(
-                text = "Nome o tag",
-                fontSize = 11.sp,
-                color = colors.textSecondary
-            )
-        }
+        Text(
+            text = "Cerca capo",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = colors.textPrimary,
+            maxLines = 1
+        )
     }
 }
 
@@ -1208,19 +1188,13 @@ fun WardrobeAddItemWidget1x2() {
                 modifier = Modifier.size(20.dp)
             )
         }
-        Column {
-            Text(
-                text = "Nuovo Capo",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary
-            )
-            Text(
-                text = "Aggiungi foto",
-                fontSize = 11.sp,
-                color = colors.textSecondary
-            )
-        }
+        Text(
+            text = "Nuovo Capo",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = colors.textPrimary,
+            maxLines = 1
+        )
     }
 }
 
@@ -1248,18 +1222,11 @@ fun WardrobeAddItemWidget2x2(viewModel: ClosetViewModel) {
             )
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = "Aggiungi Capo",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = colors.textPrimary
-            )
-            Text(
-                text = "${viewModel.clothingItems.size} capi in archivio",
-                fontSize = 11.sp,
-                color = colors.textSecondary
-            )
-        }
+        Text(
+            text = "Aggiungi Capo",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = colors.textPrimary
+        )
     }
 }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.closet.ui.viewmodel.ClosetViewModel
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -230,16 +232,11 @@ fun FunctionPhotoWidget2x2(
             ) {
                 Text(
                     text = closetName,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     maxLines = 1,
                     modifier = Modifier.basicMarquee()
-                )
-                Text(
-                    text = "Panoramica",
-                    fontSize = 10.sp,
-                    color = Color.White.copy(alpha = 0.8f)
                 )
             }
         } else {
@@ -264,21 +261,14 @@ fun FunctionPhotoWidget2x2(
                     )
                 }
 
-                Column {
-                    Text(
-                        text = closetName,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.textPrimary,
-                        maxLines = 1,
-                        modifier = Modifier.basicMarquee()
-                    )
-                    Text(
-                        text = "Panoramica foto",
-                        fontSize = 11.sp,
-                        color = colors.textSecondary
-                    )
-                }
+                Text(
+                    text = closetName,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    modifier = Modifier.basicMarquee()
+                )
             }
         }
     }
@@ -353,19 +343,12 @@ fun FunctionPhotoWidget2x4(
                 )
             }
 
-            Column {
-                Text(
-                    text = "$count capi presenti",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.textSecondary
-                )
-                Text(
-                    text = if (photoUri != null) "Tocca per aprire" else "Tocca per gestire",
-                    fontSize = 11.sp,
-                    color = colors.accent
-                )
-            }
+            Text(
+                text = "$count capi presenti",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.textSecondary
+            )
         }
     }
 }
@@ -399,21 +382,13 @@ fun FunctionMoveWidget1x2(
                 modifier = Modifier.size(19.dp)
             )
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Sposta Capi",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary,
-                maxLines = 1
-            )
-            Text(
-                text = "${viewModel.availableClosets.size} armadi",
-                fontSize = 11.sp,
-                color = colors.textSecondary,
-                maxLines = 1
-            )
-        }
+        Text(
+            text = "Sposta Capi",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = colors.textPrimary,
+            maxLines = 1
+        )
     }
 }
 
@@ -446,21 +421,12 @@ fun FunctionMoveWidget2x2(
             )
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = "Spostamento",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = colors.textPrimary
-            )
-            Text(
-                text = "Trasferisci capi tra ${viewModel.availableClosets.size} armadi",
-                fontSize = 11.sp,
-                color = colors.textSecondary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        Text(
+            text = "Spostamento",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = colors.textPrimary
+        )
     }
 }
 
@@ -509,21 +475,13 @@ fun FunctionLaundryWidget1x2(
             )
         }
 
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Panni sporchi",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary,
-                maxLines = 1
-            )
-            Text(
-                text = "Lavaggio & Timer",
-                fontSize = 11.sp,
-                color = colors.textSecondary,
-                maxLines = 1
-            )
-        }
+        Text(
+            text = "Panni",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = colors.textPrimary,
+            maxLines = 1
+        )
     }
 }
 
@@ -575,19 +533,12 @@ fun FunctionLaundryWidget2x2(
             }
         }
 
-        Column {
-            Text(
-                text = "Lavanderia",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Black,
-                color = colors.textPrimary
-            )
-            Text(
-                text = "Cesto panni & timer",
-                fontSize = 11.sp,
-                color = colors.textSecondary
-            )
-        }
+        Text(
+            text = "Lavanderia",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Black,
+            color = colors.textPrimary
+        )
     }
 }
 
@@ -633,11 +584,6 @@ fun FunctionLaundryWidget2x4(
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Black,
                 color = colors.textPrimary
-            )
-            Text(
-                text = "Tocca per gestire il cesto e avviare il timer",
-                fontSize = 11.5.sp,
-                color = colors.textSecondary
             )
         }
 
@@ -697,19 +643,13 @@ fun FunctionTripWidget1x2(
                 modifier = Modifier.size(19.dp)
             )
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Valigia",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary
-            )
-            Text(
-                text = "Organizza viaggio",
-                fontSize = 11.sp,
-                color = colors.textSecondary
-            )
-        }
+        Text(
+            text = "Viaggio",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = colors.textPrimary,
+            maxLines = 1
+        )
     }
 }
 
@@ -742,19 +682,12 @@ fun FunctionTripWidget2x2(
             )
         }
 
-        Column {
-            Text(
-                text = "Viaggio",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = colors.textPrimary
-            )
-            Text(
-                text = "Prepara la valigia",
-                fontSize = 11.sp,
-                color = colors.textSecondary
-            )
-        }
+        Text(
+            text = "Viaggio",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = colors.textPrimary
+        )
     }
 }
 
@@ -800,11 +733,6 @@ fun FunctionTripWidget2x4(
                 fontWeight = FontWeight.Black,
                 color = colors.textPrimary
             )
-            Text(
-                text = "Seleziona i capi da portare con te",
-                fontSize = 11.5.sp,
-                color = colors.textSecondary
-            )
         }
     }
 }
@@ -838,21 +766,13 @@ fun FunctionTransfersWidget1x2(
                 modifier = Modifier.size(19.dp)
             )
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Trasferimenti",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary,
-                maxLines = 1
-            )
-            Text(
-                text = "Registro movimenti",
-                fontSize = 11.sp,
-                color = colors.textSecondary,
-                maxLines = 1
-            )
-        }
+        Text(
+            text = "Trasferimenti",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = colors.textPrimary,
+            maxLines = 1
+        )
     }
 }
 
@@ -904,19 +824,12 @@ fun FunctionTransfersWidget2x2(
             }
         }
 
-        Column {
-            Text(
-                text = "Trasferimenti",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Black,
-                color = colors.textPrimary
-            )
-            Text(
-                text = "Panni, Valigia & Spostamenti",
-                fontSize = 11.sp,
-                color = colors.textSecondary
-            )
-        }
+        Text(
+            text = "Trasferimenti",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Black,
+            color = colors.textPrimary
+        )
     }
 }
 
@@ -1055,19 +968,12 @@ fun UtilityTorchWidget2x2(isEditMode: Boolean) {
             }
         }
 
-        Column {
-            Text(
-                text = "Torcia LED",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = colors.textPrimary
-            )
-            Text(
-                text = if (isTorchOn) "Tocca per spegnere" else "Tocca per illuminare",
-                fontSize = 11.sp,
-                color = colors.textSecondary
-            )
-        }
+        Text(
+            text = "Torcia LED",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = colors.textPrimary
+        )
     }
 }
 
@@ -1386,7 +1292,7 @@ fun UtilityCompassWidget2x2() {
                 lineHeight = 20.sp
             )
             Text(
-                text = "${reading.azimuthDegrees.roundToInt()}Â°",
+                text = "${reading.azimuthDegrees.roundToInt()}\u00B0",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
                 color = colors.textPrimary
@@ -1426,7 +1332,7 @@ fun UtilityCompassWidget2x4() {
                 color = colors.accent
             )
             Text(
-                text = "${reading.azimuthDegrees.roundToInt()}Â° $shortDir",
+                text = "${reading.azimuthDegrees.roundToInt()}\u00B0 $shortDir",
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Black,
                 color = colors.textPrimary,
@@ -1443,6 +1349,396 @@ fun UtilityCompassWidget2x4() {
                 fontSize = 10.5.sp,
                 color = colors.textMuted
             )
+        }
+    }
+}
+
+// =========================================================================
+// WIDGET LIVELLA A BOLLA (1x1, 1x2, 2x2, 2x4)
+// =========================================================================
+
+@Composable
+fun UtilityLevelWidget1x1() {
+    val colors = LocalOneUIColors.current
+    val reading = rememberCompassReading()
+    val pitch = reading.pitchDegrees
+    val roll = reading.rollDegrees
+    val isLevel = abs(pitch) < 1.5f && abs(roll) < 1.5f
+    val levelColor = if (isLevel) Color(0xFF10B981) else colors.accent
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val radius = size.minDimension / 2f
+            val center = Offset(size.width / 2f, size.height / 2f)
+
+            // Sfondo circolare
+            drawCircle(
+                color = colors.surfaceSecondary,
+                radius = radius,
+                center = center
+            )
+            drawCircle(
+                color = if (isLevel) Color(0xFF10B981).copy(alpha = 0.5f) else colors.cardBorder,
+                radius = radius,
+                center = center,
+                style = Stroke(width = 1.2.dp.toPx())
+            )
+
+            // Cerchio centrale bersaglio
+            drawCircle(
+                color = colors.textMuted.copy(alpha = 0.3f),
+                radius = radius * 0.35f,
+                center = center,
+                style = Stroke(width = 1.dp.toPx())
+            )
+
+            // Linee mirino
+            drawLine(
+                color = colors.textMuted.copy(alpha = 0.2f),
+                start = Offset(center.x - radius * 0.7f, center.y),
+                end = Offset(center.x + radius * 0.7f, center.y),
+                strokeWidth = 1.dp.toPx()
+            )
+            drawLine(
+                color = colors.textMuted.copy(alpha = 0.2f),
+                start = Offset(center.x, center.y - radius * 0.7f),
+                end = Offset(center.x, center.y + radius * 0.7f),
+                strokeWidth = 1.dp.toPx()
+            )
+
+            val maxTilt = 30f
+            val normX = (roll / maxTilt).coerceIn(-1f, 1f)
+            val normY = (pitch / maxTilt).coerceIn(-1f, 1f)
+            val maxOffset = radius * 0.65f
+            val bubbleCenter = Offset(
+                x = center.x + normX * maxOffset,
+                y = center.y + normY * maxOffset
+            )
+
+            drawCircle(
+                color = levelColor.copy(alpha = 0.25f),
+                radius = 9.dp.toPx(),
+                center = bubbleCenter
+            )
+            drawCircle(
+                color = levelColor,
+                radius = 6.dp.toPx(),
+                center = bubbleCenter
+            )
+        }
+
+        if (isLevel) {
+            Surface(
+                shape = CircleShape,
+                color = Color(0xFF10B981).copy(alpha = 0.15f),
+                modifier = Modifier.padding(2.dp)
+            ) {
+                Text(
+                    text = "0°",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF10B981),
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun UtilityLevelWidget1x2() {
+    val colors = LocalOneUIColors.current
+    val reading = rememberCompassReading()
+    val pitch = reading.pitchDegrees
+    val roll = reading.rollDegrees
+    val isLevel = abs(pitch) < 1.5f && abs(roll) < 1.5f
+    val levelColor = if (isLevel) Color(0xFF10B981) else colors.accent
+
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(54.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val radius = size.minDimension / 2f
+                val center = Offset(size.width / 2f, size.height / 2f)
+
+                drawCircle(
+                    color = colors.surfaceSecondary,
+                    radius = radius,
+                    center = center
+                )
+                drawCircle(
+                    color = if (isLevel) Color(0xFF10B981).copy(alpha = 0.6f) else colors.cardBorder,
+                    radius = radius,
+                    center = center,
+                    style = Stroke(width = 1.2.dp.toPx())
+                )
+                drawCircle(
+                    color = colors.textMuted.copy(alpha = 0.3f),
+                    radius = radius * 0.35f,
+                    center = center,
+                    style = Stroke(width = 1.dp.toPx())
+                )
+                drawLine(
+                    color = colors.textMuted.copy(alpha = 0.25f),
+                    start = Offset(center.x - radius * 0.7f, center.y),
+                    end = Offset(center.x + radius * 0.7f, center.y),
+                    strokeWidth = 1.dp.toPx()
+                )
+                drawLine(
+                    color = colors.textMuted.copy(alpha = 0.25f),
+                    start = Offset(center.x, center.y - radius * 0.7f),
+                    end = Offset(center.x, center.y + radius * 0.7f),
+                    strokeWidth = 1.dp.toPx()
+                )
+
+                val maxTilt = 30f
+                val normX = (roll / maxTilt).coerceIn(-1f, 1f)
+                val normY = (pitch / maxTilt).coerceIn(-1f, 1f)
+                val maxOffset = radius * 0.65f
+                val bubbleCenter = Offset(
+                    x = center.x + normX * maxOffset,
+                    y = center.y + normY * maxOffset
+                )
+
+                drawCircle(
+                    color = levelColor.copy(alpha = 0.25f),
+                    radius = 9.dp.toPx(),
+                    center = bubbleCenter
+                )
+                drawCircle(
+                    color = levelColor,
+                    radius = 6.dp.toPx(),
+                    center = bubbleCenter
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (isLevel) Color(0xFF10B981).copy(alpha = 0.18f) else colors.accent.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = if (isLevel) "IN BOLLA" else "INCLINATA",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (isLevel) Color(0xFF10B981) else colors.accent,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(3.dp))
+
+            Text(
+                text = "X: ${roll.roundToInt()}° • Y: ${pitch.roundToInt()}°",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+fun UtilityLevelWidget2x2() {
+    val colors = LocalOneUIColors.current
+    val reading = rememberCompassReading()
+    val pitch = reading.pitchDegrees
+    val roll = reading.rollDegrees
+    val isLevel = abs(pitch) < 1.5f && abs(roll) < 1.5f
+    val levelColor = if (isLevel) Color(0xFF10B981) else colors.accent
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val radius = size.minDimension / 2f
+            val center = Offset(size.width / 2f, size.height / 2f)
+
+            drawCircle(
+                color = colors.surfaceSecondary,
+                radius = radius,
+                center = center
+            )
+            drawCircle(
+                color = if (isLevel) Color(0xFF10B981).copy(alpha = 0.7f) else colors.cardBorder,
+                radius = radius,
+                center = center,
+                style = Stroke(width = 1.5.dp.toPx())
+            )
+
+            drawCircle(
+                color = colors.textMuted.copy(alpha = 0.2f),
+                radius = radius * 0.6f,
+                center = center,
+                style = Stroke(width = 1.dp.toPx())
+            )
+
+            drawCircle(
+                color = colors.textMuted.copy(alpha = 0.35f),
+                radius = radius * 0.28f,
+                center = center,
+                style = Stroke(width = 1.dp.toPx())
+            )
+
+            drawLine(
+                color = colors.textMuted.copy(alpha = 0.25f),
+                start = Offset(center.x - radius * 0.8f, center.y),
+                end = Offset(center.x + radius * 0.8f, center.y),
+                strokeWidth = 1.dp.toPx()
+            )
+            drawLine(
+                color = colors.textMuted.copy(alpha = 0.25f),
+                start = Offset(center.x, center.y - radius * 0.8f),
+                end = Offset(center.x, center.y + radius * 0.8f),
+                strokeWidth = 1.dp.toPx()
+            )
+
+            val maxTilt = 45f
+            val normX = (roll / maxTilt).coerceIn(-1f, 1f)
+            val normY = (pitch / maxTilt).coerceIn(-1f, 1f)
+            val maxOffset = radius * 0.65f
+            val bubbleCenter = Offset(
+                x = center.x + normX * maxOffset,
+                y = center.y + normY * maxOffset
+            )
+
+            drawCircle(
+                color = levelColor.copy(alpha = 0.3f),
+                radius = 14.dp.toPx(),
+                center = bubbleCenter
+            )
+            drawCircle(
+                color = levelColor,
+                radius = 9.dp.toPx(),
+                center = bubbleCenter
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = if (isLevel) Color(0xFF10B981).copy(alpha = 0.18f) else colors.cardBackground.copy(alpha = 0.85f),
+                border = BorderStroke(0.5.dp, if (isLevel) Color(0xFF10B981).copy(alpha = 0.4f) else colors.cardBorder)
+            ) {
+                Text(
+                    text = if (isLevel) "In bolla" else "X: ${roll.roundToInt()}°  Y: ${pitch.roundToInt()}°",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isLevel) Color(0xFF10B981) else colors.textPrimary,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun UtilityLevelWidget2x4() {
+    val colors = LocalOneUIColors.current
+    val reading = rememberCompassReading()
+    val pitch = reading.pitchDegrees
+    val roll = reading.rollDegrees
+    val isLevel = abs(pitch) < 1.5f && abs(roll) < 1.5f
+    val levelColor = if (isLevel) Color(0xFF10B981) else colors.accent
+
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(120.dp)
+        ) {
+            UtilityLevelWidget2x2()
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "LIVELLA A BOLLA",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = levelColor
+            )
+            Text(
+                text = if (isLevel) "In bolla" else "Inclinata",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Black,
+                color = if (isLevel) Color(0xFF10B981) else colors.textPrimary,
+                lineHeight = 26.sp
+            )
+            Text(
+                text = "Rollio (X): ${roll.roundToInt()}°",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.textSecondary
+            )
+            Text(
+                text = "Beccheggio (Y): ${pitch.roundToInt()}°",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.textSecondary
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // Tubo orizzontale indicatore per X
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(14.dp)
+                    .clip(CircleShape)
+                    .background(colors.surfaceSecondary)
+                    .border(0.5.dp, colors.cardBorder, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val c = Offset(size.width / 2f, size.height / 2f)
+                    drawLine(colors.textMuted.copy(alpha = 0.4f), Offset(c.x - 8.dp.toPx(), 0f), Offset(c.x - 8.dp.toPx(), size.height), 1.dp.toPx())
+                    drawLine(colors.textMuted.copy(alpha = 0.4f), Offset(c.x + 8.dp.toPx(), 0f), Offset(c.x + 8.dp.toPx(), size.height), 1.dp.toPx())
+
+                    val maxOffset = size.width / 2f - 10.dp.toPx()
+                    val bubbleX = c.x + (roll / 30f).coerceIn(-1f, 1f) * maxOffset
+                    drawCircle(levelColor.copy(alpha = 0.4f), 5.dp.toPx(), Offset(bubbleX, c.y))
+                    drawCircle(levelColor, 3.5.dp.toPx(), Offset(bubbleX, c.y))
+                }
+            }
         }
     }
 }

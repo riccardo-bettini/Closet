@@ -30,6 +30,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.drag
@@ -78,6 +79,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
@@ -91,6 +93,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -325,6 +328,8 @@ fun OneUITopActionIsland(
     onSearchClick: () -> Unit = {},
     showTodayButton: Boolean = false,
     todayDayNumber: String = "",
+    hasActiveReminders: Boolean = false,
+    onReminderClick: () -> Unit = {},
     isMoreMenuOpen: Boolean = false,
     onMoreOptionsClick: () -> Unit
 ) {
@@ -393,13 +398,14 @@ fun OneUITopActionIsland(
                 modifier = Modifier
                     .size(34.dp)
                     .clip(CircleShape)
-                    .background(colors.surfaceSecondary),
+                    .background(if (hasActiveReminders) colors.accent else colors.surfaceSecondary)
+                    .clickable(onClick = onReminderClick),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.Notifications,
+                    imageVector = if (hasActiveReminders) Icons.Filled.Notifications else Icons.Outlined.Notifications,
                     contentDescription = "Promemoria",
-                    tint = colors.textSecondary,
+                    tint = if (hasActiveReminders) Color.White else colors.textSecondary,
                     modifier = Modifier.size(19.dp)
                 )
             }
@@ -797,6 +803,7 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         viewModel.checkForStartupUpdates(appVersionName)
+        viewModel.checkReleaseNotes(appVersionName)
     }
 
     val coroutineScope = rememberCoroutineScope()
@@ -813,6 +820,7 @@ fun HomeScreen(
 
     val currentTab = islandTabs.getOrNull(pagerState.currentPage) ?: IslandTabType.HOME
     var isShowingSettings by remember { mutableStateOf(false) }
+    var isReminderPopupOpen by remember { mutableStateOf(false) }
 
     // Stato per quando l'Armadio non è nell'isola ma viene aperto come funzione dentro "Funzioni"
     var isWardrobeOpenedAsSubFunction by remember { mutableStateOf(false) }
@@ -979,6 +987,23 @@ fun HomeScreen(
                 targetFunctionSubScreen = targetTab.toFunctionSubScreenOrNull()
             }
             coroutineScope.launch { pagerState.animateScrollToPage(fnIdx) }
+        }
+    }
+
+    LaunchedEffect(viewModel.pendingNavigationFunction) {
+        val target = viewModel.pendingNavigationFunction ?: return@LaunchedEffect
+        viewModel.pendingNavigationFunction = null
+        when (target) {
+            "SETTINGS" -> isShowingSettings = true
+            "WARDROBE" -> navigateToTabOrFunction(IslandTabType.WARDROBE)
+            "CALENDAR" -> navigateToTabOrFunction(IslandTabType.CALENDAR)
+            "CLOSET_PHOTOS" -> navigateToTabOrFunction(IslandTabType.CLOSET_PHOTOS)
+            "MOVE" -> navigateToTabOrFunction(IslandTabType.MOVE)
+            "LAUNDRY" -> navigateToTabOrFunction(IslandTabType.LAUNDRY)
+            "TRIP" -> navigateToTabOrFunction(IslandTabType.TRIP)
+            "TRANSFERS_ACTIVITY" -> navigateToTabOrFunction(IslandTabType.TRANSFERS_ACTIVITY)
+            "TOOLS" -> navigateToTabOrFunction(IslandTabType.TOOLS)
+            else -> {}
         }
     }
 
@@ -1168,12 +1193,21 @@ fun HomeScreen(
                     onResetAccentColor = { viewModel.resetCustomAccentColor() },
                     useDistinctFunctionColors = viewModel.useDistinctFunctionColors,
                     onToggleDistinctFunctionColors = { viewModel.setDistinctFunctionColors(it) },
+                    notificationsSoundEnabled = viewModel.notificationsSoundEnabled,
+                    onToggleNotificationsSound = { viewModel.setNotificationsSound(it) },
+                    notificationsVibrationEnabled = viewModel.notificationsVibrationEnabled,
+                    onToggleNotificationsVibration = { viewModel.setNotificationsVibration(it) },
                     autoCheckUpdatesOnStartup = viewModel.autoCheckUpdatesOnStartup,
                     onToggleAutoCheckUpdates = { viewModel.updateAutoCheckUpdatesOnStartup(it) },
                     islandTabs = viewModel.islandTabs,
                     onSaveIslandTabs = { viewModel.updateIslandTabs(it) },
                     favoriteShortcuts = viewModel.favoriteShortcuts,
                     onSaveFavoriteShortcuts = { viewModel.updateFavoriteShortcuts(it) },
+                    closetSwipeChangeEnabled = viewModel.isClosetSwipeChangeEnabled,
+                    onToggleClosetSwipeChange = { viewModel.updateClosetSwipeChangeEnabled(it) },
+                    closetSwipeDirection = viewModel.closetSwipeDirection,
+                    onSelectClosetSwipeDirection = { viewModel.updateClosetSwipeDirection(it) },
+                    onOpenReleaseNotes = { viewModel.openReleaseNotesManually() },
                     onClearAllData = { viewModel.clearAllData() },
                     onResetSettings = { viewModel.resetSettingsToDefault() },
                     onBack = { isShowingSettings = false }
@@ -1459,7 +1493,11 @@ fun HomeScreen(
                                             WidgetType.UTILITY_COMPASS_1X1,
                                             WidgetType.UTILITY_COMPASS_1X2,
                                             WidgetType.UTILITY_COMPASS_2X2,
-                                            WidgetType.UTILITY_COMPASS_2X4 -> {
+                                            WidgetType.UTILITY_COMPASS_2X4,
+                                            WidgetType.UTILITY_LEVEL_1X1,
+                                            WidgetType.UTILITY_LEVEL_1X2,
+                                            WidgetType.UTILITY_LEVEL_2X2,
+                                            WidgetType.UTILITY_LEVEL_2X4 -> {
                                                 // Gestiti direttamente dal widget stesso
                                             }
                                         }
@@ -1516,6 +1554,8 @@ fun HomeScreen(
                         },
                         showTodayButton = false,
                         todayDayNumber = today.dayOfMonth.toString(),
+                        hasActiveReminders = viewModel.reminders.any { it.isEnabled },
+                        onReminderClick = { isReminderPopupOpen = true },
                         isMoreMenuOpen = isTopMenuOpen,
                         onMoreOptionsClick = { isTopMenuOpen = !isTopMenuOpen }
                     )
@@ -2849,6 +2889,20 @@ fun HomeScreen(
                 onDismiss = { viewModel.dismissStartupUpdateDialog() }
             )
         }
+
+        if (viewModel.showReleaseNotesDialog) {
+            ReleaseNotesDialog(
+                versionName = appVersionName,
+                onDismiss = { viewModel.dismissReleaseNotes(appVersionName) }
+            )
+        }
+
+        if (isReminderPopupOpen) {
+            ReminderListDialog(
+                viewModel = viewModel,
+                onDismiss = { isReminderPopupOpen = false }
+            )
+        }
     }
 }
 
@@ -2896,6 +2950,99 @@ fun HomeDashboardGrid(
         val pageCount = if (isEditMode) occupiedPages + 1 else occupiedPages
         val verticalPagerState = rememberPagerState(initialPage = 0, pageCount = { pageCount })
 
+        var pagedDraggedWidget by remember { mutableStateOf<PlacedWidget?>(null) }
+        var pagedDragStartPage by remember { mutableIntStateOf(0) }
+        var pagedDragTouchOffset by remember { mutableStateOf(Offset.Zero) }
+        var pagedDragFingerPos by remember { mutableStateOf(Offset.Zero) }
+        var pagedHoverRow by remember { mutableIntStateOf(-1) }
+        var pagedHoverCol by remember { mutableIntStateOf(-1) }
+        var lastEdgeHoverTime by remember { mutableLongStateOf(0L) }
+        var edgeHoverDirection by remember { mutableIntStateOf(0) }
+        var gridRootCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+
+        var isDraggingPageIndicator by remember { mutableStateOf(false) }
+        var pageIndicatorDragStartPosition by remember { mutableFloatStateOf(0f) }
+        var pageIndicatorDragPosition by remember { mutableFloatStateOf(0f) }
+        var pageIndicatorAccumulatedDeltaY by remember { mutableFloatStateOf(0f) }
+
+        val currentIndicatorDisplayPosition by remember {
+            derivedStateOf {
+                if (isDraggingPageIndicator) {
+                    pageIndicatorDragPosition
+                } else {
+                    (verticalPagerState.currentPage + verticalPagerState.currentPageOffsetFraction).coerceIn(0f, (pageCount - 1).toFloat())
+                }
+            }
+        }
+
+        val indicatorActivePage by remember {
+            derivedStateOf {
+                currentIndicatorDisplayPosition.roundToInt().coerceIn(0, pageCount - 1)
+            }
+        }
+
+        LaunchedEffect(pageIndicatorDragPosition, isDraggingPageIndicator, pageCount) {
+            if (isDraggingPageIndicator && pageCount > 1) {
+                val targetPage = pageIndicatorDragPosition.roundToInt().coerceIn(0, pageCount - 1)
+                val targetFraction = (pageIndicatorDragPosition - targetPage).coerceIn(-0.5f, 0.5f)
+                verticalPagerState.scrollToPage(page = targetPage, pageOffsetFraction = targetFraction)
+            }
+        }
+
+        LaunchedEffect(isEditMode) {
+            if (!isEditMode) {
+                pagedDraggedWidget = null
+                pagedHoverRow = -1
+                pagedHoverCol = -1
+                edgeHoverDirection = 0
+                lastEdgeHoverTime = 0L
+            }
+        }
+
+        // Timer di cambio pagina quando si trascina un widget verso l'alto o verso il basso ai bordi
+        LaunchedEffect(pagedDraggedWidget) {
+            if (pagedDraggedWidget == null) {
+                edgeHoverDirection = 0
+                lastEdgeHoverTime = 0L
+                return@LaunchedEffect
+            }
+
+            val topZonePx = with(density) { 140.dp.toPx() }
+            val bottomZonePx = with(density) { 150.dp.toPx() }
+
+            while (pagedDraggedWidget != null) {
+                val currentFingerY = pagedDragFingerPos.y
+                val currentMaxHeight = if (viewportHeightPx > 0f) viewportHeightPx else 2000f
+                val bottomEdge = currentMaxHeight - bottomZonePx
+
+                val dir = when {
+                    currentFingerY < topZonePx && verticalPagerState.currentPage > 0 -> -1
+                    currentFingerY > bottomEdge && verticalPagerState.currentPage < pageCount - 1 -> 1
+                    else -> 0
+                }
+
+                if (dir != 0 && !verticalPagerState.isScrollInProgress) {
+                    val now = System.currentTimeMillis()
+                    if (dir != edgeHoverDirection) {
+                        edgeHoverDirection = dir
+                        lastEdgeHoverTime = now
+                    } else if (now - lastEdgeHoverTime >= 350L) {
+                        val targetPage = (verticalPagerState.currentPage + dir).coerceIn(0, pageCount - 1)
+                        if (targetPage != verticalPagerState.currentPage) {
+                            edgeHoverDirection = 0
+                            lastEdgeHoverTime = 0L
+                            verticalPagerState.animateScrollToPage(targetPage)
+                            delay(450)
+                        }
+                    }
+                } else {
+                    edgeHoverDirection = 0
+                    lastEdgeHoverTime = 0L
+                }
+                delay(30)
+            }
+        }
+
         LaunchedEffect(verticalPagerState.currentPage) {
             onPageChanged(verticalPagerState.currentPage)
         }
@@ -2942,6 +3089,7 @@ fun HomeDashboardGrid(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(start = horizontalPadding, end = horizontalPadding)
+                    .onGloballyPositioned { gridRootCoordinates = it }
                     .then(emptySpaceGestureModifier)
             ) {
                 val availableWidth = maxWidth - (spacing * 3)
@@ -2949,6 +3097,8 @@ fun HomeDashboardGrid(
 
                 val pageContentHeight = (unitCellSize * maxRows) + (spacing * (maxRows - 1))
                 val topHeaderHeight = 64.dp
+                val topHeaderHeightPx = with(density) { topHeaderHeight.toPx() }
+                val cellStepPx = with(density) { (unitCellSize + spacing).toPx() }
                 val minPeek = unitCellSize + spacing
                 val bottomPeekHeight = maxOf(maxHeight - topHeaderHeight - pageContentHeight, minPeek)
 
@@ -2984,16 +3134,36 @@ fun HomeDashboardGrid(
                     pageSize = customPageSize,
                     pageSpacing = spacing,
                     contentPadding = PaddingValues(top = topHeaderHeight, bottom = bottomPeekHeight),
-                    userScrollEnabled = true,
+                    userScrollEnabled = (pagedDraggedWidget == null),
                     beyondViewportPageCount = 2
                 ) { pageIndex ->
                     val pageStartRow = pageIndex * maxRows
                     val pageEndRow = pageStartRow + maxRows
-                    val pageWidgets = widgets.filter { w ->
-                        val r = w.gridRow.coerceAtLeast(0)
-                        r in pageStartRow until pageEndRow
-                    }.map { w ->
-                        w.copy(gridRow = w.gridRow - pageStartRow)
+                    val isCurrentActivePage = (pagedDraggedWidget != null && verticalPagerState.currentPage == pageIndex)
+
+                    val pageWidgets = remember(widgets, pagedDraggedWidget, verticalPagerState.currentPage, pageIndex, pagedHoverRow, pagedHoverCol) {
+                        if (pagedDraggedWidget != null) {
+                            val draggedId = pagedDraggedWidget!!.instanceId
+                            if (isCurrentActivePage) {
+                                val others = widgets.filter { it.instanceId != draggedId && it.gridRow in pageStartRow until pageEndRow }
+                                    .map { it.copy(gridRow = it.gridRow - pageStartRow) }
+                                val draggedCandidate = pagedDraggedWidget!!.copy(
+                                    gridRow = pagedHoverRow.coerceAtLeast(0),
+                                    gridCol = pagedHoverCol.coerceAtLeast(0)
+                                )
+                                others + listOf(draggedCandidate)
+                            } else {
+                                widgets.filter { it.instanceId != draggedId && it.gridRow in pageStartRow until pageEndRow }
+                                    .map { it.copy(gridRow = it.gridRow - pageStartRow) }
+                            }
+                        } else {
+                            widgets.filter { w ->
+                                val r = w.gridRow.coerceAtLeast(0)
+                                r in pageStartRow until pageEndRow
+                            }.map { w ->
+                                w.copy(gridRow = w.gridRow - pageStartRow)
+                            }
+                        }
                     }
 
                     val dummyScrollState = rememberScrollState(0)
@@ -3017,51 +3187,231 @@ fun HomeDashboardGrid(
                             fixedRows = maxRows,
                             pageIndex = pageIndex,
                             totalPageCount = pageCount,
-                            onRequestPageChange = { targetP ->
-                                coroutineScope.launch {
-                                    verticalPagerState.animateScrollToPage(targetP)
+                            externalDraggedWidgetId = if (isCurrentActivePage) pagedDraggedWidget?.instanceId else null,
+                            externalHoverRow = if (isCurrentActivePage) pagedHoverRow else -1,
+                            externalHoverCol = if (isCurrentActivePage) pagedHoverCol else -1,
+                            onStartWidgetDrag = { widget, touchOffset, widgetCoords ->
+                                pagedDraggedWidget = widget
+                                pagedDragStartPage = pageIndex
+                                pagedDragTouchOffset = touchOffset
+                                val gridCoords = gridRootCoordinates
+                                val posInGrid = if (gridCoords != null && gridCoords.isAttached && widgetCoords.isAttached) {
+                                    gridCoords.localPositionOf(widgetCoords, touchOffset)
+                                } else {
+                                    val root = widgetCoords.localToRoot(touchOffset)
+                                    val gridRoot = gridCoords?.localToRoot(Offset.Zero) ?: Offset.Zero
+                                    root - gridRoot
+                                }
+                                pagedDragFingerPos = posInGrid
+                                pagedHoverRow = widget.gridRow
+                                pagedHoverCol = widget.gridCol
+                            },
+                            onWidgetDrag = { changePos, widgetCoords ->
+                                val gridCoords = gridRootCoordinates
+                                val posInGrid = if (gridCoords != null && gridCoords.isAttached && widgetCoords.isAttached) {
+                                    gridCoords.localPositionOf(widgetCoords, changePos)
+                                } else {
+                                    val root = widgetCoords.localToRoot(changePos)
+                                    val gridRoot = gridCoords?.localToRoot(Offset.Zero) ?: Offset.Zero
+                                    root - gridRoot
+                                }
+                                pagedDragFingerPos = posInGrid
+
+                                val cardLeft = posInGrid.x - pagedDragTouchOffset.x
+                                val cardTop = posInGrid.y - pagedDragTouchOffset.y - topHeaderHeightPx
+                                val rawCol = cardLeft / cellStepPx
+                                val rawRow = cardTop / cellStepPx
+                                val activeW = pagedDraggedWidget
+                                if (activeW != null) {
+                                    val prevCol = pagedHoverCol.coerceAtLeast(0)
+                                    val prevRow = pagedHoverRow.coerceAtLeast(0)
+                                    val maxCol = 4 - activeW.type.colSpan
+                                    val maxRow = maxRows - activeW.type.rowSpan
+
+                                    val newCol = if (kotlin.math.abs(rawCol - prevCol) > 0.55f) {
+                                        rawCol.roundToInt().coerceIn(0, maxCol)
+                                    } else {
+                                        prevCol.coerceIn(0, maxCol)
+                                    }
+                                    val newRow = if (kotlin.math.abs(rawRow - prevRow) > 0.55f) {
+                                        rawRow.roundToInt().coerceIn(0, maxRow)
+                                    } else {
+                                        prevRow.coerceIn(0, maxRow)
+                                    }
+                                    if (newCol != pagedHoverCol || newRow != pagedHoverRow) {
+                                        pagedHoverCol = newCol
+                                        pagedHoverRow = newRow
+                                    }
                                 }
                             },
+                            onEndWidgetDrag = { completed ->
+                                val activeW = pagedDraggedWidget
+                                if (completed && activeW != null) {
+                                    val finalPage = verticalPagerState.currentPage
+                                    val targetRow = pagedHoverRow.coerceIn(0, (maxRows - activeW.type.rowSpan).coerceAtLeast(0))
+                                    val targetCol = pagedHoverCol.coerceIn(0, (4 - activeW.type.colSpan).coerceAtLeast(0))
+                                    val startPage = pagedDragStartPage
+                                    val movedId = activeW.instanceId
+
+                                    if (startPage == finalPage) {
+                                        val thisPageWidgets = widgets.filter { it.gridRow in startPage * maxRows until (startPage + 1) * maxRows }
+                                            .map { it.copy(gridRow = it.gridRow - startPage * maxRows) }
+                                        val normalizedBase = normalizeGridPlacements(thisPageWidgets, maxRows)
+                                        val resolved = resolveMatrixDragLayout(normalizedBase, movedId, targetRow, targetCol, maxRows)
+                                        val pageUpdated = resolved.map { it.widget.copy(gridRow = startPage * maxRows + it.row, gridCol = it.col) }
+                                        val otherWidgets = widgets.filter { it.gridRow !in startPage * maxRows until (startPage + 1) * maxRows }
+                                        val allNew = (otherWidgets + pageUpdated).sortedWith(compareBy<PlacedWidget> { it.gridRow }.thenBy { it.gridCol })
+                                        onUpdateWidgetsLayout(allNew)
+                                    } else {
+                                        // 1. Start page remaining widgets (preserva esattamente le loro posizioni senza alterarle)
+                                        val startPageRemaining = widgets.filter { it.instanceId != movedId && it.gridRow in startPage * maxRows until (startPage + 1) * maxRows }
+
+                                        // 2. Target page existing + moved widget
+                                        val targetPageExisting = widgets.filter { it.instanceId != movedId && it.gridRow in finalPage * maxRows until (finalPage + 1) * maxRows }
+                                            .map { it.copy(gridRow = it.gridRow - finalPage * maxRows) }
+                                        val targetCandidate = activeW.copy(gridRow = targetRow, gridCol = targetCol)
+                                        val targetBase = targetPageExisting + listOf(targetCandidate)
+                                        val targetNormalized = normalizeGridPlacements(targetBase, maxRows)
+                                        val targetResolved = resolveMatrixDragLayout(targetNormalized, movedId, targetRow, targetCol, maxRows)
+                                        val targetUpdated = targetResolved.map { it.widget.copy(gridRow = finalPage * maxRows + it.row, gridCol = it.col) }
+
+                                        // 3. Other pages untouched
+                                        val untouched = widgets.filter { it.instanceId != movedId && it.gridRow !in startPage * maxRows until (startPage + 1) * maxRows && it.gridRow !in finalPage * maxRows until (finalPage + 1) * maxRows }
+
+                                        val combined = (untouched + startPageRemaining + targetUpdated).sortedWith(compareBy<PlacedWidget> { it.gridRow }.thenBy { it.gridCol })
+                                        onUpdateWidgetsLayout(combined)
+                                    }
+                                }
+                                pagedDraggedWidget = null
+                                pagedHoverRow = -1
+                                pagedHoverCol = -1
+                            },
                             onRemoveWidget = onRemoveWidget,
-                            onUpdateWidgetsLayout = { updatedPageWidgets, destPageIndex, movedWidgetId ->
+                            onUpdateWidgetsLayout = { updatedPageWidgets, _, _ ->
                                 val otherWidgets = widgets.filter { w ->
                                     val r = w.gridRow.coerceAtLeast(0)
                                     r !in pageStartRow until pageEndRow
                                 }
-                                if (destPageIndex == pageIndex || movedWidgetId == null) {
-                                    val mappedBack = updatedPageWidgets.map { w ->
-                                        w.copy(gridRow = pageStartRow + w.gridRow)
-                                    }
-                                    onUpdateWidgetsLayout(otherWidgets + mappedBack)
-                                } else {
-                                    val destStartRow = destPageIndex * maxRows
-                                    val movedWidget = updatedPageWidgets.find { it.instanceId == movedWidgetId }
-                                    val remainingOnThisPage = updatedPageWidgets.filter { it.instanceId != movedWidgetId }.map {
-                                        it.copy(gridRow = pageStartRow + it.gridRow)
-                                    }
-                                    val relocated = movedWidget?.copy(gridRow = destStartRow + movedWidget.gridRow)
-                                    val otherClean = otherWidgets.filter { it.instanceId != movedWidgetId }
-                                    val combined = otherClean + remainingOnThisPage + listOfNotNull(relocated)
-                                    onUpdateWidgetsLayout(combined)
+                                val mappedBack = updatedPageWidgets.map { w ->
+                                    w.copy(gridRow = pageStartRow + w.gridRow)
                                 }
+                                onUpdateWidgetsLayout(otherWidgets + mappedBack)
                             },
                             onNavigateFunction = onNavigateFunction,
                             onWidgetClick = onWidgetClick
                         )
                     }
                 }
+
+                // Overlay widget fluttuante durante il trascinamento inter-pagina
+                if (pagedDraggedWidget != null) {
+                    val activeW = pagedDraggedWidget!!
+                    val dragWidthDp = (unitCellSize * activeW.type.colSpan) + (spacing * (activeW.type.colSpan - 1))
+                    val dragHeightDp = (unitCellSize * activeW.type.rowSpan) + (spacing * (activeW.type.rowSpan - 1))
+                    val is1x1 = activeW.type.rowSpan == 1 && activeW.type.colSpan == 1
+                    val dragCornerRadius = if (is1x1) unitCellSize / 2 else unitCellSize / 2
+
+                    val cardLeftPx = pagedDragFingerPos.x - pagedDragTouchOffset.x
+                    val cardTopPx = pagedDragFingerPos.y - pagedDragTouchOffset.y
+
+                    Box(
+                        modifier = Modifier
+                            .offset {
+                                IntOffset(cardLeftPx.roundToInt(), cardTopPx.roundToInt())
+                            }
+                            .size(width = dragWidthDp, height = dragHeightDp)
+                            .zIndex(100f)
+                            .scale(1.04f)
+                            .graphicsLayer {
+                                shadowElevation = 32f
+                            }
+                    ) {
+                        WidgetCardContainer(
+                            viewModel = viewModel,
+                            widget = activeW,
+                            useDistinctColors = useDistinctColors,
+                            isEditMode = true,
+                            isBeingDragged = true,
+                            isBeingResized = false,
+                            canResize = false,
+                            cornerRadius = dragCornerRadius,
+                            onRemove = {},
+                            onClick = {},
+                            onNavigateFunction = onNavigateFunction
+                        )
+                    }
+                }
             }
 
-            VerticalPageIndicator(
+            val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val islandBottomPadding = when {
+                navBarBottom == 0.dp -> 14.dp
+                navBarBottom <= 24.dp -> 6.dp
+                else -> 8.dp
+            }
+            val indicatorBottomOffset = islandBottomPadding + 54.dp + 10.dp
+
+            HomePageIndicator(
                 pageCount = pageCount,
-                currentPage = verticalPagerState.currentPage,
+                currentPage = indicatorActivePage,
                 visibility = viewModel.homePageIndicatorVisibility,
                 position = viewModel.homePageIndicatorPosition,
                 isScrollInProgress = verticalPagerState.isScrollInProgress,
                 isEditMode = isEditMode,
+                isDragging = isDraggingPageIndicator,
+                bottomOffset = indicatorBottomOffset,
+                onDragStart = {
+                    isDraggingPageIndicator = true
+                    pageIndicatorDragStartPosition = currentIndicatorDisplayPosition
+                    pageIndicatorDragPosition = pageIndicatorDragStartPosition
+                    pageIndicatorAccumulatedDeltaY = 0f
+                },
+                onDragDelta = { dragAmount ->
+                    pageIndicatorAccumulatedDeltaY += dragAmount
+                    val pageStepPx = with(density) { 32.dp.toPx() }
+                    val deltaPages = pageIndicatorAccumulatedDeltaY / pageStepPx
+                    pageIndicatorDragPosition = (pageIndicatorDragStartPosition + deltaPages)
+                        .coerceIn(0f, (pageCount - 1).toFloat())
+                },
+                onDragEnd = {
+                    if (isDraggingPageIndicator) {
+                        val targetPage = pageIndicatorDragPosition.roundToInt().coerceIn(0, pageCount - 1)
+                        isDraggingPageIndicator = false
+                        coroutineScope.launch {
+                            verticalPagerState.animateScrollToPage(
+                                page = targetPage,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioLowBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            )
+                        }
+                    }
+                },
+                onDragCancel = {
+                    if (isDraggingPageIndicator) {
+                        val targetPage = pageIndicatorDragPosition.roundToInt().coerceIn(0, pageCount - 1)
+                        isDraggingPageIndicator = false
+                        coroutineScope.launch {
+                            verticalPagerState.animateScrollToPage(
+                                page = targetPage,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioLowBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            )
+                        }
+                    }
+                },
                 onPageClick = { targetP ->
                     coroutineScope.launch {
-                        verticalPagerState.animateScrollToPage(targetP)
+                        verticalPagerState.animateScrollToPage(
+                            page = targetP,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        )
                     }
                 }
             )
@@ -3173,6 +3523,12 @@ fun FlowWidgetLayout(
     fixedRows: Int = 0,
     pageIndex: Int = 0,
     totalPageCount: Int = 1,
+    externalDraggedWidgetId: String? = null,
+    externalHoverRow: Int = -1,
+    externalHoverCol: Int = -1,
+    onStartWidgetDrag: ((widget: PlacedWidget, touchOffset: Offset, widgetCoords: LayoutCoordinates) -> Unit)? = null,
+    onWidgetDrag: ((changePos: Offset, widgetCoords: LayoutCoordinates) -> Unit)? = null,
+    onEndWidgetDrag: ((completed: Boolean) -> Unit)? = null,
     onRequestPageChange: (Int) -> Unit = {},
     onRemoveWidget: (String) -> Unit,
     onUpdateWidgetsLayout: (List<PlacedWidget>, destinationPageIndex: Int, movedWidgetId: String?) -> Unit,
@@ -3279,14 +3635,18 @@ fun FlowWidgetLayout(
         normalizeGridPlacements(effectiveWidgets, maxRowsPerPage = fixedRows)
     }
 
-    val virtualPlacements = remember(originalPlacements, draggedWidgetId, targetHoverRow, targetHoverCol, fixedRows) {
-        val activeDragId = draggedWidgetId
-        if (activeDragId != null && targetHoverRow >= 0 && targetHoverCol >= 0) {
+    val effectiveDragId = externalDraggedWidgetId ?: draggedWidgetId
+    val effectiveHoverRow = if (externalDraggedWidgetId != null) externalHoverRow else targetHoverRow
+    val effectiveHoverCol = if (externalDraggedWidgetId != null) externalHoverCol else targetHoverCol
+
+    val virtualPlacements = remember(originalPlacements, effectiveDragId, effectiveHoverRow, effectiveHoverCol, fixedRows) {
+        val activeDragId = effectiveDragId
+        if (activeDragId != null && effectiveHoverRow >= 0 && effectiveHoverCol >= 0) {
             resolveMatrixDragLayout(
                 basePlacements = originalPlacements,
                 draggedId = activeDragId,
-                targetRow = targetHoverRow,
-                targetCol = targetHoverCol,
+                targetRow = effectiveHoverRow,
+                targetCol = effectiveHoverCol,
                 maxRowsPerPage = fixedRows
             )
         } else {
@@ -3301,7 +3661,7 @@ fun FlowWidgetLayout(
     val currentVirtualPlacements by rememberUpdatedState(virtualPlacements)
     val currentOriginalPlacements by rememberUpdatedState(originalPlacements)
 
-    // Auto-scroll continuo in modalità infinita oppure cambio pagina ai bordi in modalità a pagine
+    // Auto-scroll continuo in modalità scorrimento continuo
     LaunchedEffect(draggedWidgetId) {
         if (draggedWidgetId == null) return@LaunchedEffect
         if (fixedRows <= 0) {
@@ -3351,37 +3711,6 @@ fun FlowWidgetLayout(
                 }
                 delay(16)
             }
-        } else {
-            val topEdgeZonePx = with(density) { 90.dp.toPx() }
-            val bottomEdgeZonePx = viewportHeightPx - with(density) { 110.dp.toPx() }
-
-            while (draggedWidgetId != null) {
-                val fingerY = dragFingerCurrentY
-                val dir = when {
-                    fingerY > 0f && fingerY < topEdgeZonePx -> -1
-                    fingerY > bottomEdgeZonePx && viewportHeightPx > 0f -> 1
-                    else -> 0
-                }
-
-                if (dir != 0) {
-                    val now = System.currentTimeMillis()
-                    if (dir != edgeHoverDirection) {
-                        edgeHoverDirection = dir
-                        lastEdgeHoverTime = now
-                    } else if (now - lastEdgeHoverTime >= 400L) {
-                        val targetP = (currentTargetPage + dir).coerceIn(0, totalPageCount - 1)
-                        if (targetP != currentTargetPage) {
-                            currentTargetPage = targetP
-                            onRequestPageChange(targetP)
-                            lastEdgeHoverTime = now + 450L
-                        }
-                    }
-                } else {
-                    edgeHoverDirection = 0
-                    lastEdgeHoverTime = 0L
-                }
-                delay(30)
-            }
         }
     }
 
@@ -3408,8 +3737,8 @@ fun FlowWidgetLayout(
             .fillMaxWidth()
             .height(containerHeightDp)
     ) {
-        val draggedPlacementPreview = if (draggedWidgetId != null) {
-            virtualPlacements.find { it.widget.instanceId == draggedWidgetId }
+        val draggedPlacementPreview = if (effectiveDragId != null) {
+            virtualPlacements.find { it.widget.instanceId == effectiveDragId }
         } else null
 
         if (isEditMode && draggedPlacementPreview != null) {
@@ -3563,6 +3892,9 @@ fun FlowWidgetLayout(
                         currentCardTopPx - (cellStepPx * dragStartRow)
                     } else 0f
 
+                    val isExternallyDragged = (externalDraggedWidgetId == widget.instanceId)
+                    var itemCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+
                     Box(
                         modifier = Modifier
                             .offset(
@@ -3577,6 +3909,7 @@ fun FlowWidgetLayout(
                                     else -> 2f
                                 }
                             )
+                            .onGloballyPositioned { itemCoordinates = it }
                             // pointerInput PRIMA di graphicsLayer per evitare oscillazioni/tremolii
                             .pointerInput(widget.instanceId, isEditMode, canResize) {
                                 if (!isEditMode) {
@@ -3589,10 +3922,10 @@ fun FlowWidgetLayout(
                                         val down = awaitFirstDown(requireUnconsumed = false)
 
                                         val is1x1 = currentOrigPlacement.rowSpan == 1 && currentOrigPlacement.colSpan == 1
-                                        val effectiveResizeZonePx = if (is1x1) with(density) { 20.dp.toPx() } else with(density) { 24.dp.toPx() }
-                                        val effectiveRemoveZonePx = if (is1x1) with(density) { 22.dp.toPx() } else with(density) { 28.dp.toPx() }
+                                        val effectiveResizeZonePx = with(density) { if (is1x1) 32.dp.toPx() else 42.dp.toPx() }
+                                        val effectiveRemoveZonePx = with(density) { if (is1x1) 30.dp.toPx() else 38.dp.toPx() }
 
-                                        // 1. Tasto Rimuovi (-) stile iOS in alto a sinistra (TopStart)
+                                        // 1. Tasto Rimuovi (-) in alto a sinistra (TopStart)
                                         val isOnRemoveButton = down.position.x <= effectiveRemoveZonePx &&
                                             down.position.y <= effectiveRemoveZonePx
 
@@ -3606,7 +3939,7 @@ fun FlowWidgetLayout(
                                             return@awaitEachGesture
                                         }
 
-                                        // 2. Cursore di ridimensionamento in basso a destra stile iOS (più preciso per evitare falsi tocchi)
+                                        // 2. Cursore di ridimensionamento in basso a destra (One UI touch target ottimizzato)
                                         val isOnResizeHandle = canResize &&
                                             down.position.x >= (size.width - effectiveResizeZonePx) &&
                                             down.position.y >= (size.height - effectiveResizeZonePx)
@@ -3639,7 +3972,8 @@ fun FlowWidgetLayout(
                                                     val targetHeightPx = (baseHeightPx + totalDragY).coerceAtLeast(unitCellSizePx * 0.6f)
 
                                                     val desiredCols = ((targetWidthPx + spacingPx) / cellStepPx).roundToInt().coerceIn(1, 4)
-                                                    val desiredRows = ((targetHeightPx + spacingPx) / cellStepPx).roundToInt().coerceIn(1, 4)
+                                                    val maxAllowedRows = if (fixedRows > 0) fixedRows else 4
+                                                    val desiredRows = ((targetHeightPx + spacingPx) / cellStepPx).roundToInt().coerceIn(1, maxAllowedRows)
 
                                                     val candidateVariant = startType.findBestVariantForSize(desiredCols, desiredRows)
                                                     if (candidateVariant != resizePreviewType) {
@@ -3667,7 +4001,7 @@ fun FlowWidgetLayout(
                                                         w
                                                     }
                                                 }
-                                                val normalized = normalizeGridPlacements(updatedBase)
+                                                val normalized = normalizeGridPlacements(updatedBase, maxRowsPerPage = fixedRows)
                                                     .sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
                                                     .map { it.widget.copy(gridRow = it.row, gridCol = it.col) }
 
@@ -3681,100 +4015,124 @@ fun FlowWidgetLayout(
                                             return@awaitEachGesture
                                         }
 
-                                        // 3. Pressione prolungata per spostare il widget nella griglia
-                                        val trigger = awaitLongPressOrCancellation(down.id)
-                                        if (trigger != null && draggedWidgetId == null && resizingWidgetId == null) {
-                                            val startP = currentOrigPlacement
-                                            val startR = startP.row
-                                            val startC = startP.col
+                                        // 3. Spostamento widget immediato al tocco e trascinamento (superamento touch slop senza attese)
+                                        var isDragStarted = false
+                                        var pan = Offset.Zero
+                                        val dragTrigger = awaitTouchSlopOrCancellation(down.id) { change, overSlop ->
+                                            change.consume()
+                                            pan = overSlop
+                                            isDragStarted = true
+                                        }
 
-                                            draggedWidgetId = widget.instanceId
-                                            dragStartRow = startR
-                                            dragStartCol = startC
-                                            targetHoverRow = startR
-                                            targetHoverCol = startC
+                                        if (isDragStarted && draggedWidgetId == null && resizingWidgetId == null) {
+                                            if (onStartWidgetDrag != null) {
+                                                val savedCoords: LayoutCoordinates = itemCoordinates ?: return@awaitEachGesture
+                                                onStartWidgetDrag(widget, down.position, savedCoords)
+                                                var completed = false
+                                                try {
+                                                    completed = drag(down.id) { change ->
+                                                        change.consume()
+                                                        val curCoords: LayoutCoordinates = itemCoordinates ?: savedCoords
+                                                        onWidgetDrag?.invoke(change.position, curCoords)
+                                                    }
+                                                } catch (_: Exception) {
+                                                    completed = false
+                                                }
+                                                onEndWidgetDrag?.invoke(completed)
+                                            } else {
+                                                val startP = currentOrigPlacement
+                                                val startR = startP.row
+                                                val startC = startP.col
 
-                                            dragTouchOffsetX = down.position.x
-                                            dragTouchOffsetY = down.position.y
-                                            dragFingerCurrentX = (cellStepPx * startC) + down.position.x
-                                            dragFingerCurrentY = headerOffsetPx + (cellStepPx * startR) + down.position.y - scrollState.value
+                                                draggedWidgetId = widget.instanceId
+                                                dragStartRow = startR
+                                                dragStartCol = startC
+                                                targetHoverRow = startR
+                                                targetHoverCol = startC
 
-                                            var completed = false
-                                            try {
-                                                completed = drag(down.id) { change ->
-                                                    change.consume()
-                                                    if (draggedWidgetId == widget.instanceId) {
-                                                        dragFingerCurrentX = (cellStepPx * startC) + change.position.x
-                                                        dragFingerCurrentY = headerOffsetPx + (cellStepPx * startR) + change.position.y - scrollState.value
+                                                dragTouchOffsetX = down.position.x
+                                                dragTouchOffsetY = down.position.y
+                                                dragFingerCurrentX = (cellStepPx * startC) + down.position.x + pan.x
+                                                dragFingerCurrentY = headerOffsetPx + (cellStepPx * startR) + down.position.y + pan.y - scrollState.value
 
-                                                        val cardLeftPx = dragFingerCurrentX - dragTouchOffsetX
-                                                        val cardTopPx = dragFingerCurrentY + scrollState.value - headerOffsetPx - dragTouchOffsetY
+                                                var completed = false
+                                                try {
+                                                    completed = drag(down.id) { change ->
+                                                        change.consume()
+                                                        if (draggedWidgetId == widget.instanceId) {
+                                                            dragFingerCurrentX = (cellStepPx * startC) + change.position.x
+                                                            dragFingerCurrentY = headerOffsetPx + (cellStepPx * startR) + change.position.y - scrollState.value
 
-                                                        val rawCol = cardLeftPx / cellStepPx
-                                                        val rawRow = cardTopPx / cellStepPx
+                                                            val cardLeftPx = dragFingerCurrentX - dragTouchOffsetX
+                                                            val cardTopPx = dragFingerCurrentY + scrollState.value - headerOffsetPx - dragTouchOffsetY
 
-                                                        val prevCol = targetHoverCol.coerceAtLeast(0)
-                                                        val prevRow = targetHoverRow.coerceAtLeast(0)
+                                                            val rawCol = cardLeftPx / cellStepPx
+                                                            val rawRow = cardTopPx / cellStepPx
 
-                                                        val newCol = if (abs(rawCol - prevCol) > 0.55f) {
-                                                            rawCol.roundToInt().coerceIn(0, 4 - startP.colSpan)
-                                                        } else {
-                                                            prevCol.coerceIn(0, 4 - startP.colSpan)
-                                                        }
+                                                            val prevCol = targetHoverCol.coerceAtLeast(0)
+                                                            val prevRow = targetHoverRow.coerceAtLeast(0)
 
-                                                        val maxAllowedRow = if (fixedRows > 0) {
-                                                            (fixedRows - startP.rowSpan).coerceAtLeast(0)
-                                                        } else {
-                                                            maxOf(
-                                                                9,
-                                                                (currentOriginalPlacements.maxOfOrNull { it.row + it.rowSpan } ?: 0) + 1
-                                                            )
-                                                        }
-                                                        val newRow = if (abs(rawRow - prevRow) > 0.55f) {
-                                                            rawRow.roundToInt().coerceIn(0, maxAllowedRow)
-                                                        } else {
-                                                            prevRow.coerceIn(0, maxAllowedRow)
-                                                        }
+                                                            val newCol = if (abs(rawCol - prevCol) > 0.55f) {
+                                                                rawCol.roundToInt().coerceIn(0, 4 - startP.colSpan)
+                                                            } else {
+                                                                prevCol.coerceIn(0, 4 - startP.colSpan)
+                                                            }
 
-                                                        if (newRow != targetHoverRow || newCol != targetHoverCol) {
-                                                            targetHoverRow = newRow
-                                                            targetHoverCol = newCol
+                                                            val maxAllowedRow = if (fixedRows > 0) {
+                                                                (fixedRows - startP.rowSpan).coerceAtLeast(0)
+                                                            } else {
+                                                                maxOf(
+                                                                    9,
+                                                                    (currentOriginalPlacements.maxOfOrNull { it.row + it.rowSpan } ?: 0) + 1
+                                                                )
+                                                            }
+                                                            val newRow = if (abs(rawRow - prevRow) > 0.55f) {
+                                                                rawRow.roundToInt().coerceIn(0, maxAllowedRow)
+                                                            } else {
+                                                                prevRow.coerceIn(0, maxAllowedRow)
+                                                            }
+
+                                                            if (newRow != targetHoverRow || newCol != targetHoverCol) {
+                                                                targetHoverRow = newRow
+                                                                targetHoverCol = newCol
+                                                            }
                                                         }
                                                     }
+                                                } catch (_: Exception) {
+                                                    completed = false
                                                 }
-                                            } catch (_: Exception) {
-                                                completed = false
+
+                                                if (completed && draggedWidgetId == widget.instanceId) {
+                                                    val finalPlacements = currentVirtualPlacements
+                                                    val updatedWidgets = finalPlacements
+                                                        .sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
+                                                        .map { it.widget.copy(gridRow = it.row, gridCol = it.col) }
+
+                                                    workingWidgets.clear()
+                                                    workingWidgets.addAll(updatedWidgets)
+                                                    currentOnUpdateLayout(updatedWidgets, currentTargetPage, widget.instanceId)
+                                                }
+
+                                                draggedWidgetId = null
+                                                targetHoverRow = -1
+                                                targetHoverCol = -1
+                                                dragTouchOffsetX = 0f
+                                                dragTouchOffsetY = 0f
+                                                dragFingerCurrentX = 0f
+                                                dragFingerCurrentY = 0f
                                             }
-
-                                            if (completed && draggedWidgetId == widget.instanceId) {
-                                                val finalPlacements = currentVirtualPlacements
-                                                val updatedWidgets = finalPlacements
-                                                    .sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
-                                                    .map { it.widget.copy(gridRow = it.row, gridCol = it.col) }
-
-                                                workingWidgets.clear()
-                                                workingWidgets.addAll(updatedWidgets)
-                                                currentOnUpdateLayout(updatedWidgets, currentTargetPage, widget.instanceId)
-                                            }
-
-                                            draggedWidgetId = null
-                                            targetHoverRow = -1
-                                            targetHoverCol = -1
-                                            dragTouchOffsetX = 0f
-                                            dragTouchOffsetY = 0f
-                                            dragFingerCurrentX = 0f
-                                            dragFingerCurrentY = 0f
                                         }
                                     }
                                 }
                             }
                             .graphicsLayer {
                                 clip = false
+                                alpha = if (isExternallyDragged) 0f else 1f
                                 scaleX = cardScale
                                 scaleY = cardScale
                                 translationX = dragVisualTranslationX
                                 translationY = dragVisualTranslationY
-                                shadowElevation = cardElevation
+                                shadowElevation = if (isExternallyDragged) 0f else cardElevation
                             }
                     ) {
                         WidgetCardContainer(
@@ -3935,6 +4293,11 @@ fun WidgetCardContainer(
                     WidgetType.UTILITY_COMPASS_1X2 -> UtilityCompassWidget1x2()
                     WidgetType.UTILITY_COMPASS_2X2 -> UtilityCompassWidget2x2()
                     WidgetType.UTILITY_COMPASS_2X4 -> UtilityCompassWidget2x4()
+
+                    WidgetType.UTILITY_LEVEL_1X1 -> UtilityLevelWidget1x1()
+                    WidgetType.UTILITY_LEVEL_1X2 -> UtilityLevelWidget1x2()
+                    WidgetType.UTILITY_LEVEL_2X2 -> UtilityLevelWidget2x2()
+                    WidgetType.UTILITY_LEVEL_2X4 -> UtilityLevelWidget2x4()
 
                     WidgetType.CLOCK_DIGITAL_1X2 -> ClockDigitalWidget1x2()
                     WidgetType.CLOCK_DIGITAL_2X2 -> ClockDigitalWidget2x2()

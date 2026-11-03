@@ -108,6 +108,7 @@ enum class PageIndicatorVisibility {
 }
 
 enum class PageIndicatorPosition {
+    BOTTOM,
     RIGHT,
     LEFT
 }
@@ -198,6 +199,11 @@ enum class WidgetType(val rowSpan: Int, val colSpan: Int, val title: String) {
     UTILITY_COMPASS_2X2(2, 2, "Bussola Grafica"),
     UTILITY_COMPASS_2X4(2, 4, "Bussola & Orientamento"),
 
+    UTILITY_LEVEL_1X1(1, 1, "Livella Mini"),
+    UTILITY_LEVEL_1X2(1, 2, "Livella Compatta"),
+    UTILITY_LEVEL_2X2(2, 2, "Livella a Bolla"),
+    UTILITY_LEVEL_2X4(2, 4, "Livella Estesa"),
+
     CLOCK_DIGITAL_1X2(1, 2, "Orologio Digitale Compatto"),
     CLOCK_DIGITAL_2X2(2, 2, "Orologio Digitale"),
     CLOCK_DIGITAL_2X4(2, 4, "Orologio Digitale Esteso"),
@@ -218,7 +224,8 @@ enum class WidgetFamily(val displayName: String) {
     WARDROBE_LIST("Elenco Capi"),
     WARDROBE_SEARCH("Cerca Capi"),
     WARDROBE_ADD_ITEM("Aggiungi Capo"),
-    FUNCTION_SHORTCUT("Scorciatoia"),
+    FUNCTION_CALENDAR("Scorciatoia Calendario"),
+    FUNCTION_TOOLS("Scorciatoia Strumenti"),
     FUNCTION_QUICK_ACTIONS("Pannello Funzioni"),
     FUNCTION_PHOTO("Foto Armadio"),
     FUNCTION_MOVE("Spostamento Capi"),
@@ -227,6 +234,7 @@ enum class WidgetFamily(val displayName: String) {
     FUNCTION_TRANSFERS("Registro Trasferimenti"),
     UTILITY_TORCH("Torcia"),
     UTILITY_COMPASS("Bussola"),
+    UTILITY_LEVEL("Livella"),
     CLOCK_DIGITAL("Orologio Digitale"),
     CLOCK_ANALOG("Orologio Analogico")
 }
@@ -259,8 +267,8 @@ val WidgetType.family: WidgetFamily
         WidgetType.WARDROBE_ADD_ITEM_1X2,
         WidgetType.WARDROBE_ADD_ITEM_2X2 -> WidgetFamily.WARDROBE_ADD_ITEM
 
-        WidgetType.FUNCTION_CALENDAR_1X1,
-        WidgetType.FUNCTION_TOOLS_1X1 -> WidgetFamily.FUNCTION_SHORTCUT
+        WidgetType.FUNCTION_CALENDAR_1X1 -> WidgetFamily.FUNCTION_CALENDAR
+        WidgetType.FUNCTION_TOOLS_1X1 -> WidgetFamily.FUNCTION_TOOLS
 
         WidgetType.FUNCTION_QUICK_ACTIONS_1X4,
         WidgetType.FUNCTION_QUICK_ACTIONS_2X2 -> WidgetFamily.FUNCTION_QUICK_ACTIONS
@@ -296,6 +304,11 @@ val WidgetType.family: WidgetFamily
         WidgetType.UTILITY_COMPASS_2X2,
         WidgetType.UTILITY_COMPASS_2X4 -> WidgetFamily.UTILITY_COMPASS
 
+        WidgetType.UTILITY_LEVEL_1X1,
+        WidgetType.UTILITY_LEVEL_1X2,
+        WidgetType.UTILITY_LEVEL_2X2,
+        WidgetType.UTILITY_LEVEL_2X4 -> WidgetFamily.UTILITY_LEVEL
+
         WidgetType.CLOCK_DIGITAL_1X2,
         WidgetType.CLOCK_DIGITAL_2X2,
         WidgetType.CLOCK_DIGITAL_2X4 -> WidgetFamily.CLOCK_DIGITAL
@@ -305,13 +318,19 @@ val WidgetType.family: WidgetFamily
         WidgetType.CLOCK_ANALOG_2X4 -> WidgetFamily.CLOCK_ANALOG
     }
 
+private val variantsByFamily: Map<WidgetFamily, List<WidgetType>> by lazy {
+    WidgetType.entries
+        .groupBy { it.family }
+        .mapValues { (_, list) ->
+            list.sortedWith(compareBy<WidgetType> { it.rowSpan * it.colSpan }.thenBy { it.colSpan })
+        }
+}
+
 /**
  * Restituisce tutte le varianti dimensionali disponibili per la famiglia di questo widget.
  */
 fun WidgetType.getAvailableVariants(): List<WidgetType> {
-    val targetFamily = this.family
-    return WidgetType.values().filter { it.family == targetFamily }
-        .sortedWith(compareBy<WidgetType> { it.rowSpan * it.colSpan }.thenBy { it.colSpan })
+    return variantsByFamily[this.family] ?: listOf(this)
 }
 
 /**
@@ -396,73 +415,17 @@ fun markMatrixOccupied(
     }
 }
 
-fun compactEmptyMatrixRows(placements: List<WidgetPlacement>, maxRowsPerPage: Int = 0): List<WidgetPlacement> {
-    if (placements.isEmpty()) return emptyList()
-    if (maxRowsPerPage <= 0) {
-        val maxRow = placements.maxOf { it.row + it.rowSpan }
-        val rowHasContent = BooleanArray(maxRow + 1)
-        for (p in placements) {
-            for (r in p.row until (p.row + p.rowSpan)) {
-                if (r in rowHasContent.indices) rowHasContent[r] = true
-            }
-        }
-
-        val rowMapping = IntArray(maxRow + 1)
-        var currentCompactRow = 0
-        for (r in 0..maxRow) {
-            rowMapping[r] = currentCompactRow
-            if (rowHasContent[r]) {
-                currentCompactRow++
-            }
-        }
-
-        return placements.map { p ->
-            val newRow = rowMapping[p.row]
-            p.copy(
-                row = newRow,
-                widget = p.widget.copy(gridRow = newRow, gridCol = p.col)
-            )
-        }
-    } else {
-        // Compatta riga per riga all'interno della stessa pagina senza mai mischiare o unire pagine
-        val pages = placements.groupBy { it.row / maxRowsPerPage }
-        val result = mutableListOf<WidgetPlacement>()
-        val sortedPageKeys = pages.keys.sorted()
-        sortedPageKeys.forEachIndexed { newPageIndex, oldPageIndex ->
-            val pagePlacements = pages[oldPageIndex] ?: emptyList()
-            val pageStartRow = newPageIndex * maxRowsPerPage
-            val oldPageStartRow = oldPageIndex * maxRowsPerPage
-            val localHasContent = BooleanArray(maxRowsPerPage)
-            for (p in pagePlacements) {
-                val localStart = (p.row - oldPageStartRow).coerceIn(0, maxRowsPerPage - 1)
-                for (r in localStart until minOf(maxRowsPerPage, localStart + p.rowSpan)) {
-                    localHasContent[r] = true
-                }
-            }
-            val localMapping = IntArray(maxRowsPerPage)
-            var currentCompactLocal = 0
-            for (r in 0 until maxRowsPerPage) {
-                localMapping[r] = currentCompactLocal
-                if (localHasContent[r]) {
-                    currentCompactLocal++
-                }
-            }
-            pagePlacements.forEach { p ->
-                val localStart = (p.row - oldPageStartRow).coerceIn(0, maxRowsPerPage - 1)
-                val newLocalRow = localMapping[localStart]
-                val newGlobalRow = pageStartRow + newLocalRow
-                result.add(
-                    p.copy(
-                        row = newGlobalRow,
-                        widget = p.widget.copy(gridRow = newGlobalRow, gridCol = p.col)
-                    )
-                )
-            }
-        }
-        return result
-    }
+private fun rectsOverlap(
+    r1: Int, c1: Int, rs1: Int, cs1: Int,
+    r2: Int, c2: Int, rs2: Int, cs2: Int
+): Boolean {
+    return r1 < r2 + rs2 && r1 + rs1 > r2 && c1 < c2 + cs2 && c1 + cs1 > c2
 }
 
+/**
+ * Normalizza il posizionamento dei widget garantendo che non vi siano collisioni né sovrapposizioni.
+ * Preserva esattamente le coordinate riga/colonna definite dall'utente senza compattare indebitamente gli spazi vuoti.
+ */
 fun normalizeGridPlacements(widgets: List<PlacedWidget>, maxRowsPerPage: Int = 0): List<WidgetPlacement> {
     if (widgets.isEmpty()) return emptyList()
     val placements = mutableListOf<WidgetPlacement>()
@@ -524,19 +487,19 @@ fun normalizeGridPlacements(widgets: List<PlacedWidget>, maxRowsPerPage: Int = 0
         }
     }
 
-    return compactEmptyMatrixRows(placements, maxRowsPerPage)
+    return placements
 }
 
 fun calculateGridPlacements(widgets: List<PlacedWidget>): List<WidgetPlacement> =
     normalizeGridPlacements(widgets)
 
-private fun rectsOverlap(
-    r1: Int, c1: Int, rs1: Int, cs1: Int,
-    r2: Int, c2: Int, rs2: Int, cs2: Int
-): Boolean {
-    return r1 < r2 + rs2 && r1 + rs1 > r2 && c1 < c2 + cs2 && c1 + cs1 > c2
-}
-
+/**
+ * Risolve lo spostamento o il ridimensionamento di un widget nella griglia.
+ * Se lo slot di destinazione è libero, il widget vi si posiziona direttamente.
+ * Se collidere con un altro widget, tenta uno scorrimento orizzontale sulla stessa riga,
+ * oppure uno scambio reciproco (swap), o infine un riposizionamento minimale dei soli elementi impattati.
+ * Garantisce l'integrità e il mantenimento di tutti i widget senza perdita né sconfinamenti fuori pagina.
+ */
 fun resolveMatrixDragLayout(
     basePlacements: List<WidgetPlacement>,
     draggedId: String,
@@ -558,13 +521,13 @@ fun resolveMatrixDragLayout(
         }
     }
 
-    if (safeRow == pDrag.row && safeCol == pDrag.col) {
-        return basePlacements
-    }
-
     val others = basePlacements.filter { it.widget.instanceId != draggedId }
     val colliding = others.filter {
         rectsOverlap(safeRow, safeCol, dRowSpan, dColSpan, it.row, it.col, it.rowSpan, it.colSpan)
+    }
+
+    if (safeRow == pDrag.row && safeCol == pDrag.col && colliding.isEmpty()) {
+        return basePlacements
     }
 
     if (colliding.isEmpty()) {
@@ -576,7 +539,7 @@ fun resolveMatrixDragLayout(
                 widget = pDrag.widget.copy(gridRow = safeRow, gridCol = safeCol)
             )
         )
-        return compactEmptyMatrixRows(result, maxRowsPerPage)
+        return result.sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
     }
 
     if (colliding.size == 1) {
@@ -588,6 +551,7 @@ fun resolveMatrixDragLayout(
         }
         markMatrixOccupied(occupiedByRest, safeRow, safeCol, dRowSpan, dColSpan)
 
+        // 1. Prova scorrimento orizzontale sulla stessa riga per il widget collidente
         val alternateColsOnSameRow = (0..(4 - other.colSpan)).filter { it != other.col }
         for (altCol in alternateColsOnSameRow) {
             if (canFitInMatrix(occupiedByRest, other.row, altCol, other.rowSpan, other.colSpan, maxRowsPerPage)) {
@@ -605,10 +569,11 @@ fun resolveMatrixDragLayout(
                         widget = pDrag.widget.copy(gridRow = safeRow, gridCol = safeCol)
                     )
                 )
-                return compactEmptyMatrixRows(result, maxRowsPerPage)
+                return result.sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
             }
         }
 
+        // 2. Prova scambio (swap) con la posizione originaria del widget trascinato
         val swapCol = pDrag.col.coerceIn(0, 4 - other.colSpan)
         val swapRow = pDrag.row
         if (canFitInMatrix(occupiedByRest, swapRow, swapCol, other.rowSpan, other.colSpan, maxRowsPerPage)) {
@@ -627,10 +592,11 @@ fun resolveMatrixDragLayout(
                     widget = pDrag.widget.copy(gridRow = safeRow, gridCol = safeCol)
                 )
             )
-            return compactEmptyMatrixRows(result, maxRowsPerPage)
+            return result.sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
         }
     }
 
+    // 3. Fallback generale: posiziona il widget trascinato e sposta solo gli elementi che collidono
     val occupied = mutableSetOf<Pair<Int, Int>>()
     val result = mutableListOf<WidgetPlacement>()
 
@@ -649,16 +615,19 @@ fun resolveMatrixDragLayout(
             markMatrixOccupied(occupied, item.row, item.col, item.rowSpan, item.colSpan)
             result.add(item)
         } else {
-            var r = item.row
-            var foundRow = r
-            var foundCol = item.col
+            var foundRow = -1
+            var foundCol = -1
             var found = false
 
-            while (!found) {
-                if (maxRowsPerPage > 0 && (r % maxRowsPerPage) + item.rowSpan > maxRowsPerPage) {
-                    r = ((r / maxRowsPerPage) + 1) * maxRowsPerPage
-                }
-                val candidateCols = listOf(item.col) + (0..(4 - item.colSpan)).filter { it != item.col }
+            val limitRows = if (maxRowsPerPage > 0) maxRowsPerPage else 60
+            val candidateRows = (0..(limitRows - item.rowSpan)).sortedWith(
+                compareBy<Int> { kotlin.math.abs(it - item.row) }.thenBy { it }
+            )
+            val candidateCols = (0..(4 - item.colSpan)).sortedWith(
+                compareBy<Int> { kotlin.math.abs(it - item.col) }.thenBy { it }
+            )
+
+            for (r in candidateRows) {
                 for (c in candidateCols) {
                     if (canFitInMatrix(occupied, r, c, item.rowSpan, item.colSpan, maxRowsPerPage)) {
                         found = true
@@ -667,19 +636,26 @@ fun resolveMatrixDragLayout(
                         break
                     }
                 }
-                if (!found) r++
+                if (found) break
             }
 
-            markMatrixOccupied(occupied, foundRow, foundCol, item.rowSpan, item.colSpan)
-            result.add(
-                item.copy(
-                    row = foundRow,
-                    col = foundCol,
-                    widget = item.widget.copy(gridRow = foundRow, gridCol = foundCol)
+            if (found) {
+                markMatrixOccupied(occupied, foundRow, foundCol, item.rowSpan, item.colSpan)
+                result.add(
+                    item.copy(
+                        row = foundRow,
+                        col = foundCol,
+                        widget = item.widget.copy(gridRow = foundRow, gridCol = foundCol)
+                    )
                 )
-            )
+            }
         }
     }
 
-    return compactEmptyMatrixRows(result, maxRowsPerPage)
+    if (result.size < basePlacements.size) {
+        // Se non è stato possibile ricollocare tutti gli elementi senza perdita, preserva il layout originale
+        return basePlacements
+    }
+
+    return result.sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
 }

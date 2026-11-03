@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -147,199 +148,211 @@ fun MoveClothingScreen(
                 .fillMaxSize()
                 .padding(start = 20.dp, end = 20.dp, top = 18.dp)
         ) {
+            // TOP BAR ONE UI CON TASTO INDIETRO E TITOLO
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 6.dp),
+                    .padding(bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Spacer(modifier = Modifier.width(52.dp))
-
-                Text(
-                    text = if (isLaundryMode) "Panni" else "Spostamento",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = colors.textPrimary,
-                    letterSpacing = 0.5.sp
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp)
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = colors.cardBackground,
-                    border = BorderStroke(1.dp, colors.cardBorder),
+                    color = colors.surfaceSecondary,
+                    border = BorderStroke(0.8.dp, colors.cardBorder),
                     tonalElevation = 2.dp,
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    IconButton(
+                        onClick = handleBack,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Torna alle funzioni",
+                            tint = screenAccent,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    text = if (isLaundryMode) "Panni" else "Spostamento",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary,
+                    letterSpacing = 0.3.sp
+                )
+            }
+
+            // SELETTORE TRASFERIMENTO ARMADI (ONE UI STYLE)
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = colors.surfaceSecondary,
+                border = BorderStroke(1.dp, colors.cardBorder),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
+                    // ARMADIO DI ORIGINE (DA)
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .weight(1f)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(colors.cardBackground)
+                            .border(BorderStroke(0.8.dp, colors.cardBorder), RoundedCornerShape(16.dp))
+                            .clickable { showSourceMenu = true }
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clip(CircleShape)
-                                .clickable { showSourceMenu = true }
-                                .padding(start = 20.dp, end = 6.dp),
-                            contentAlignment = Alignment.Center
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = screenAccent.copy(alpha = 0.15f)
                             ) {
                                 Text(
-                                    text = sourceCloset,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.textPrimary,
-                                    maxLines = 1,
-                                    modifier = Modifier.weight(1f, fill = false).basicMarquee()
+                                    text = "DA",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = screenAccent,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                 )
-                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
                             }
-
-                            DropdownMenu(
-                                expanded = showSourceMenu,
-                                onDismissRequest = { showSourceMenu = false },
-                                modifier = Modifier.background(colors.dialogBackground),
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                closets.forEach { cl ->
-                                    DropdownMenuItem(
-                                        text = { Text(cl, color = if (cl == sourceCloset) screenAccent else colors.textPrimary, fontSize = 13.sp) },
-                                        trailingIcon = { if (cl == sourceCloset) Icon(Icons.Default.Check, contentDescription = null, tint = screenAccent, modifier = Modifier.size(16.dp)) },
-                                        onClick = {
-                                            sourceCloset = cl
-                                            if (destCloset == cl) {
-                                                destCloset = closets.firstOrNull { it != cl } ?: cl
-                                            }
-                                            selectedQuantities.clear()
-                                            currentFolder = null
-                                            showSourceMenu = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .clip(CircleShape)
-                                .background(screenAccent.copy(alpha = 0.18f))
-                                .clickable {
-                                    val temp = sourceCloset
-                                    sourceCloset = destCloset
-                                    destCloset = temp
-                                    selectedQuantities.clear()
-                                    currentFolder = null
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
+                            Text(
+                                text = sourceCloset,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textPrimary,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f).basicMarquee()
+                            )
                             Icon(
-                                imageVector = Icons.Default.SwapHoriz,
-                                contentDescription = "Inverti armadi",
-                                tint = screenAccent,
-                                modifier = Modifier.size(17.dp)
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null,
+                                tint = colors.textSecondary,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clip(CircleShape)
-                                .clickable { showDestMenu = true }
-                                .padding(start = 6.dp, end = 20.dp),
-                            contentAlignment = Alignment.Center
+                        DropdownMenu(
+                            expanded = showSourceMenu,
+                            onDismissRequest = { showSourceMenu = false },
+                            modifier = Modifier.background(colors.dialogBackground),
+                            shape = RoundedCornerShape(16.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = destCloset,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = screenAccent,
-                                    maxLines = 1,
-                                    modifier = Modifier.weight(1f, fill = false).basicMarquee()
-                                )
-                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = screenAccent, modifier = Modifier.size(16.dp))
-                            }
-
-                            DropdownMenu(
-                                expanded = showDestMenu,
-                                onDismissRequest = { showDestMenu = false },
-                                modifier = Modifier.background(colors.dialogBackground),
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                closets.forEach { cl ->
-                                    DropdownMenuItem(
-                                        text = { Text(cl, color = if (cl == destCloset) screenAccent else colors.textPrimary, fontSize = 13.sp) },
-                                        trailingIcon = { if (cl == destCloset) Icon(Icons.Default.Check, contentDescription = null, tint = screenAccent, modifier = Modifier.size(16.dp)) },
-                                        onClick = {
-                                            destCloset = cl
-                                            if (sourceCloset == cl) {
-                                                sourceCloset = closets.firstOrNull { it != cl } ?: cl
-                                            }
-                                            showDestMenu = false
+                            closets.forEach { cl ->
+                                DropdownMenuItem(
+                                    text = { Text(cl, color = if (cl == sourceCloset) screenAccent else colors.textPrimary, fontSize = 13.sp) },
+                                    trailingIcon = { if (cl == sourceCloset) Icon(Icons.Default.Check, contentDescription = null, tint = screenAccent, modifier = Modifier.size(16.dp)) },
+                                    onClick = {
+                                        sourceCloset = cl
+                                        if (destCloset == cl) {
+                                            destCloset = closets.firstOrNull { it != cl } ?: cl
                                         }
-                                    )
-                                }
+                                        selectedQuantities.clear()
+                                        currentFolder = null
+                                        showSourceMenu = false
+                                    }
+                                )
                             }
                         }
                     }
-                }
 
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .offset(x = 4.dp, y = (-8).dp)
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = colors.cardBackground,
-                        border = BorderStroke(0.8.dp, screenAccent.copy(alpha = 0.7f))
+                    // TASTO INVERTI CENTRALE
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 6.dp)
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(screenAccent.copy(alpha = 0.18f))
+                            .clickable {
+                                val temp = sourceCloset
+                                sourceCloset = destCloset
+                                destCloset = temp
+                                selectedQuantities.clear()
+                                currentFolder = null
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "DA",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = screenAccent,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp)
+                        Icon(
+                            imageVector = Icons.Default.SwapHoriz,
+                            contentDescription = "Inverti armadi",
+                            tint = screenAccent,
+                            modifier = Modifier.size(19.dp)
                         )
                     }
-                }
 
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = (-4).dp, y = (-8).dp)
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = colors.cardBackground,
-                        border = BorderStroke(0.8.dp, screenAccent.copy(alpha = 0.7f))
+                    // ARMADIO DI DESTINAZIONE (A)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(colors.cardBackground)
+                            .border(BorderStroke(0.8.dp, screenAccent.copy(alpha = 0.45f)), RoundedCornerShape(16.dp))
+                            .clickable { showDestMenu = true }
                     ) {
-                        Text(
-                            text = "A",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = screenAccent,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = screenAccent
+                            ) {
+                                Text(
+                                    text = "A",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Text(
+                                text = destCloset,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = screenAccent,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f).basicMarquee()
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null,
+                                tint = screenAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showDestMenu,
+                            onDismissRequest = { showDestMenu = false },
+                            modifier = Modifier.background(colors.dialogBackground),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            closets.forEach { cl ->
+                                DropdownMenuItem(
+                                    text = { Text(cl, color = if (cl == destCloset) screenAccent else colors.textPrimary, fontSize = 13.sp) },
+                                    trailingIcon = { if (cl == destCloset) Icon(Icons.Default.Check, contentDescription = null, tint = screenAccent, modifier = Modifier.size(16.dp)) },
+                                    onClick = {
+                                        destCloset = cl
+                                        if (sourceCloset == cl) {
+                                            sourceCloset = closets.firstOrNull { it != cl } ?: cl
+                                        }
+                                        showDestMenu = false
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -374,17 +387,20 @@ fun MoveClothingScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 4.dp),
+                    .padding(top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     if (allItemsInSource.isNotEmpty()) {
-                        TextButton(
-                            onClick = {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selectedQuantities.isNotEmpty()) screenAccent.copy(alpha = 0.15f) else colors.surfaceSecondary,
+                            border = BorderStroke(0.8.dp, if (selectedQuantities.isNotEmpty()) screenAccent.copy(alpha = 0.4f) else colors.cardBorder),
+                            modifier = Modifier.clickable {
                                 if (selectedQuantities.isNotEmpty()) {
                                     selectedQuantities.clear()
                                 } else {
@@ -392,21 +408,21 @@ fun MoveClothingScreen(
                                         selectedQuantities[item.id] = if (item.isCountable) item.quantity else 1
                                     }
                                 }
-                            },
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                            }
                         ) {
                             Text(
                                 text = if (selectedQuantities.isNotEmpty()) "Deseleziona tutti" else "Seleziona tutti",
                                 fontSize = 12.sp,
-                                color = screenAccent,
-                                fontWeight = FontWeight.Bold
+                                color = if (selectedQuantities.isNotEmpty()) screenAccent else colors.textPrimary,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                             )
                         }
                     }
 
                     Text(
-                        text = "• $totalSelectedPieces selezionati",
-                        fontSize = 12.sp,
+                        text = "$totalSelectedPieces selezionati",
+                        fontSize = 12.5.sp,
                         color = colors.textSecondary,
                         fontWeight = FontWeight.Medium
                     )
@@ -414,7 +430,7 @@ fun MoveClothingScreen(
 
                 Surface(
                     shape = CircleShape,
-                    color = colors.cardBackground,
+                    color = colors.surfaceSecondary,
                     border = BorderStroke(1.dp, colors.cardBorder),
                     modifier = Modifier.height(34.dp)
                 ) {
@@ -427,14 +443,14 @@ fun MoveClothingScreen(
                             modifier = Modifier
                                 .size(28.dp)
                                 .clip(CircleShape)
-                                .background(if (viewMode == ViewMode.GRID) (if (colors.isDark) Color(0xFF383C44) else Color(0xFFE4E7EE)) else Color.Transparent)
+                                .background(if (viewMode == ViewMode.GRID) screenAccent.copy(alpha = 0.22f) else Color.Transparent)
                                 .clickable { viewMode = ViewMode.GRID },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.GridView,
                                 contentDescription = "Griglia",
-                                tint = if (viewMode == ViewMode.GRID) colors.textPrimary else colors.textSecondary,
+                                tint = if (viewMode == ViewMode.GRID) screenAccent else colors.textSecondary,
                                 modifier = Modifier.size(15.dp)
                             )
                         }
@@ -443,14 +459,14 @@ fun MoveClothingScreen(
                             modifier = Modifier
                                 .size(28.dp)
                                 .clip(CircleShape)
-                                .background(if (viewMode == ViewMode.LIST) (if (colors.isDark) Color(0xFF383C44) else Color(0xFFE4E7EE)) else Color.Transparent)
+                                .background(if (viewMode == ViewMode.LIST) screenAccent.copy(alpha = 0.22f) else Color.Transparent)
                                 .clickable { viewMode = ViewMode.LIST },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ViewList,
                                 contentDescription = "Elenco",
-                                tint = if (viewMode == ViewMode.LIST) colors.textPrimary else colors.textSecondary,
+                                tint = if (viewMode == ViewMode.LIST) screenAccent else colors.textSecondary,
                                 modifier = Modifier.size(17.dp)
                             )
                         }
@@ -655,8 +671,8 @@ fun MoveClothingScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.Settings,
-                        contentDescription = "Impostazioni Tempo",
+                        imageVector = Icons.Outlined.Tune,
+                        contentDescription = "Opzioni",
                         tint = colors.textPrimary,
                         modifier = Modifier.size(19.dp)
                     )
@@ -726,31 +742,6 @@ fun MoveClothingScreen(
                         )
                     }
                 }
-            }
-        }
-
-        Surface(
-            shape = CircleShape,
-            color = colors.surfaceSecondary,
-            border = BorderStroke(0.5.dp, colors.cardBorder),
-            tonalElevation = 4.dp,
-            shadowElevation = 6.dp,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 20.dp, top = 18.dp)
-                .size(40.dp)
-                .zIndex(20f)
-        ) {
-            IconButton(
-                onClick = handleBack,
-                modifier = Modifier.fillMaxSize()
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Torna alle funzioni",
-                    tint = screenAccent,
-                    modifier = Modifier.size(20.dp)
-                )
             }
         }
     }
@@ -1185,13 +1176,13 @@ fun SuitcaseClothingGridCard(
 
     Surface(
         shape = RoundedCornerShape(22.dp),
-        color = colors.cardBackground,
+        color = if (isSelected) itemAccentColor.copy(alpha = 0.08f) else colors.cardBackground,
         border = BorderStroke(
-            width = if (isSelected) 2.dp else 0.5.dp,
+            width = if (isSelected) 2.dp else 1.dp,
             color = if (isSelected) itemAccentColor else colors.cardBorder
         ),
-        tonalElevation = 2.dp,
-        shadowElevation = 2.dp,
+        tonalElevation = if (isSelected) 4.dp else 1.dp,
+        shadowElevation = if (isSelected) 4.dp else 1.dp,
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onToggleSelection)
@@ -1227,8 +1218,12 @@ fun SuitcaseClothingGridCard(
                         .padding(8.dp)
                         .size(24.dp)
                         .clip(CircleShape)
-                        .background(if (isSelected) itemAccentColor else Color.Black.copy(alpha = 0.45f))
-                        .border(1.5.dp, if (isSelected) itemAccentColor else Color.White, CircleShape),
+                        .background(if (isSelected) itemAccentColor else (if (item.imageUri != null) Color.Black.copy(alpha = 0.45f) else colors.cardBackground))
+                        .border(
+                            1.5.dp,
+                            if (isSelected) itemAccentColor else (if (item.imageUri != null) Color.White.copy(alpha = 0.9f) else colors.cardBorder),
+                            CircleShape
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     if (isSelected) {
@@ -1331,13 +1326,13 @@ fun SuitcaseClothingListCard(
 
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = colors.cardBackground,
+        color = if (isSelected) itemAccentColor.copy(alpha = 0.08f) else colors.cardBackground,
         border = BorderStroke(
-            width = if (isSelected) 2.dp else 0.5.dp,
+            width = if (isSelected) 2.dp else 1.dp,
             color = if (isSelected) itemAccentColor else colors.cardBorder
         ),
-        tonalElevation = 2.dp,
-        shadowElevation = 2.dp,
+        tonalElevation = if (isSelected) 4.dp else 1.dp,
+        shadowElevation = if (isSelected) 4.dp else 1.dp,
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onToggleSelection)
