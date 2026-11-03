@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -13,15 +15,39 @@ android {
         applicationId = "com.example.closet"
         minSdk = 26
         targetSdk = 35
-        versionCode = 114
-        versionName = "1.4.00"
+        versionCode = 115
+        versionName = "1.4.01"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    val signingPropertiesFile = rootProject.file("signing.properties")
+    val signingProperties = Properties()
+    val hasSigningProperties = signingPropertiesFile.exists().also { exists ->
+        if (exists) {
+            signingPropertiesFile.inputStream().use { signingProperties.load(it) }
+        }
+    }
+
+    signingConfigs {
+        if (hasSigningProperties) {
+            create("release") {
+                val keyStoreFileName = signingProperties.getProperty("storeFile") ?: "closet-release-key.jks"
+                storeFile = rootProject.file(keyStoreFileName)
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasSigningProperties) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             optimization {
                 enable = false
             }

@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -206,6 +208,29 @@ fun ToolsScreen(
         }
     }
 
+    val topFadeColor = when {
+        viewModel.currentTheme == AppTheme.AMOLED -> Color.Black
+        colors.isDark -> Color(0xFF13171E)
+        else -> Color(0xFFF2F4F8)
+    }
+    val bottomFadeColor = when {
+        viewModel.currentTheme == AppTheme.AMOLED -> Color.Black
+        colors.isDark -> colors.fadeColorBottom
+        else -> Color(0xFFE8EBF0)
+    }
+
+    val topFadeAlpha by animateFloatAsState(
+        targetValue = if (gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 8) 1f else 0f,
+        animationSpec = tween(180),
+        label = "toolsTopFadeAlpha"
+    )
+
+    val bottomFadeAlpha by animateFloatAsState(
+        targetValue = if (gridState.canScrollForward) 1f else 0f,
+        animationSpec = tween(180),
+        label = "toolsBottomFadeAlpha"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -214,113 +239,35 @@ fun ToolsScreen(
             }
             .background(Color.Transparent)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 100.dp)
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            state = gridState,
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 120.dp),
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Intestazione con pulsante modifica/fatto
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+            item(span = { GridItemSpan(2) }) {
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                        .padding(start = 50.dp, end = 95.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Spacer(modifier = Modifier.width(52.dp))
                     Text(
                         text = if (isEditMode) "Modifica Ordine" else "Strumenti",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = colors.textPrimary,
-                        letterSpacing = 0.5.sp
+                        letterSpacing = 0.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                }
-
-                if (isEditMode) {
-                    Surface(
-                        shape = CircleShape,
-                        color = toolsAccent,
-                        modifier = Modifier.clickable { isEditMode = false }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Check,
-                                contentDescription = "Fatto",
-                                tint = Color(0xFF13171E),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "Fatto",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF13171E)
-                            )
-                        }
-                    }
-                } else {
-                    Surface(
-                        shape = CircleShape,
-                        color = colors.surfaceSecondary,
-                        border = BorderStroke(0.5.dp, colors.cardBorder),
-                        modifier = Modifier.clickable { isEditMode = true }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Edit,
-                                contentDescription = "Modifica ordine",
-                                tint = toolsAccent,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Text(
-                                text = "Modifica",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.textPrimary
-                            )
-                        }
-                    }
                 }
             }
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                state = gridState,
-                contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                    .drawWithContent {
-                        drawContent()
-                        val topFadePx = 28.dp.toPx()
-                        val bottomFadePx = 48.dp.toPx()
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0f to Color.Transparent,
-                                    (topFadePx / size.height).coerceIn(0f, 1f) to Color.Black,
-                                    ((size.height - bottomFadePx) / size.height).coerceIn(0f, 1f) to Color.Black,
-                                    1f to Color.Transparent
-                                )
-                            ),
-                            blendMode = BlendMode.DstIn
-                        )
-                    },
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(items = workingTools, key = { it }) { toolKey ->
+            items(items = workingTools, key = { it }) { toolKey ->
                     val isDraggedItem = draggedToolKey == toolKey
                     val currentScale by animateFloatAsState(
                         targetValue = when {
@@ -1023,33 +970,57 @@ fun ToolsScreen(
                     }
                 }
             }
-        }
 
-        if (showTimerPickerDialog) {
-            SamsungTimerDurationPickerDialog(
-                initialSeconds = timerTotalSeconds,
-                onDismiss = { showTimerPickerDialog = false },
-                onConfirm = { newSeconds ->
-                    timerTotalSeconds = newSeconds
-                    timerRemainingSeconds = newSeconds
-                    isTimerRunning = false
-                    showTimerPickerDialog = false
-                }
-            )
-        }
+        // Sfumatura morbida in uscita in alto
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(48.dp)
+                .graphicsLayer { alpha = topFadeAlpha }
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            topFadeColor,
+                            topFadeColor.copy(alpha = 0.70f),
+                            Color.Transparent
+                        )
+                    )
+                )
+                .zIndex(15f)
+        )
 
-        // Tasto Indietro Fluttuante e Fisso sullo schermo
+        // Sfumatura morbida in uscita in basso
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(80.dp)
+                .graphicsLayer { alpha = bottomFadeAlpha }
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Transparent,
+                            bottomFadeColor.copy(alpha = 0.70f),
+                            bottomFadeColor
+                        )
+                    )
+                )
+                .zIndex(15f)
+        )
+
+        // 1° Pulsante Fluttuante: Tasto Indietro (in alto a sinistra)
         Surface(
             shape = CircleShape,
             color = colors.surfaceSecondary,
             border = BorderStroke(0.5.dp, colors.cardBorder),
-            tonalElevation = 4.dp,
-            shadowElevation = 6.dp,
+            tonalElevation = 6.dp,
+            shadowElevation = 8.dp,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(start = 20.dp, top = 18.dp)
                 .size(40.dp)
-                .zIndex(20f)
+                .zIndex(30f)
         ) {
             IconButton(
                 onClick = {
@@ -1064,6 +1035,68 @@ fun ToolsScreen(
                     modifier = Modifier.size(20.dp)
                 )
             }
+        }
+
+        // 2° Pulsante Fluttuante: Tasto Modifica / Fatto (in alto a destra)
+        Surface(
+            shape = CircleShape,
+            color = if (isEditMode) toolsAccent else colors.surfaceSecondary,
+            border = if (isEditMode) null else BorderStroke(0.5.dp, colors.cardBorder),
+            tonalElevation = 6.dp,
+            shadowElevation = 8.dp,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 20.dp, top = 18.dp)
+                .height(40.dp)
+                .zIndex(30f)
+                .clickable { isEditMode = !isEditMode }
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (isEditMode) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = "Fatto",
+                        tint = Color(0xFF13171E),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "Fatto",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF13171E)
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Outlined.Edit,
+                        contentDescription = "Modifica ordine",
+                        tint = toolsAccent,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Text(
+                        text = "Modifica",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.textPrimary
+                    )
+                }
+            }
+        }
+
+        if (showTimerPickerDialog) {
+            SamsungTimerDurationPickerDialog(
+                initialSeconds = timerTotalSeconds,
+                onDismiss = { showTimerPickerDialog = false },
+                onConfirm = { newSeconds ->
+                    timerTotalSeconds = newSeconds
+                    timerRemainingSeconds = newSeconds
+                    isTimerRunning = false
+                    showTimerPickerDialog = false
+                }
+            )
         }
     }
 }
