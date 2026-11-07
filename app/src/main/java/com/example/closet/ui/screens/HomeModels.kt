@@ -357,6 +357,39 @@ fun WidgetType.findBestVariantForSize(targetCols: Int, targetRows: Int): WidgetT
     } ?: this
 }
 
+/**
+ * Trova la variante migliore durante il trascinamento di una maniglia della cornice di ridimensionamento,
+ * privilegiando l'asse principale trascinato (orizzontale per maniglie sinistra/destra, verticale per alto/basso).
+ */
+fun WidgetType.findBestVariantForResize(
+    desiredCols: Int,
+    desiredRows: Int,
+    primaryHorizontal: Boolean? = null
+): WidgetType {
+    val variants = getAvailableVariants()
+    if (variants.size <= 1) return this
+    return variants.minByOrNull { variant ->
+        val dc = variant.colSpan - desiredCols
+        val dr = variant.rowSpan - desiredRows
+        when (primaryHorizontal) {
+            true -> (dc * dc * 5) + (dr * dr)
+            false -> (dr * dr * 6) + (dc * dc)
+            null -> (dc * dc * 2) + (dr * dr * 3)
+        }
+    } ?: this
+}
+
+enum class ResizeHandleType {
+    TOP,
+    BOTTOM,
+    LEFT,
+    RIGHT,
+    TOP_LEFT,
+    TOP_RIGHT,
+    BOTTOM_LEFT,
+    BOTTOM_RIGHT
+}
+
 @Immutable
 data class PlacedWidget(
     val instanceId: String = java.util.UUID.randomUUID().toString(),
@@ -373,6 +406,13 @@ data class WidgetPlacement(
     val col: Int,
     val rowSpan: Int,
     val colSpan: Int
+)
+
+@Immutable
+data class GridResolutionResult(
+    val isValid: Boolean,
+    val placements: List<WidgetPlacement>,
+    val targetPlacement: WidgetPlacement?
 )
 
 // =========================================================================
@@ -494,12 +534,259 @@ fun calculateGridPlacements(widgets: List<PlacedWidget>): List<WidgetPlacement> 
     normalizeGridPlacements(widgets)
 
 /**
- * Risolve lo spostamento o il ridimensionamento di un widget nella griglia.
- * Se lo slot di destinazione è libero, il widget vi si posiziona direttamente.
- * Se collidere con un altro widget, tenta uno scorrimento orizzontale sulla stessa riga,
- * oppure uno scambio reciproco (swap), o infine un riposizionamento minimale dei soli elementi impattati.
- * Garantisce l'integrità e il mantenimento di tutti i widget senza perdita né sconfinamenti fuori pagina.
+ * Risolve lo spostamento o il ridimensionamento di un widget rigorosamente all'interno della stessa pagina
+ * (o della griglia continua se maxRowsPerPage <= 0).
+ *
+ * - Se lo spazio target è libero, posiziona il widget senza muovere gli altri.
+ * - Se collide con altri widget nella pagina, prova prima lo scorrimento locale / scambio reciproco (swap)
+ *   e poi una ricollocazione a minimo spostamento di pagina.
+ * - Se nella pagina corrente (0 until maxRowsPerPage) non c'è spazio sufficiente per far stare tutti i widget
+ *   senza espellerne alcuno fuori pagina, restituisce `isValid = false` (che mostra il contorno rosso di blocco).
  */
+fun resolvePageGridOperation(
+    basePlacements: List<WidgetPlacement>,
+    activeWidget: PlacedWidget,
+    targetRow: Int,
+    targetCol: Int,
+    maxRowsPerPage: Int = 0
+): GridResolutionResult {
+    val dRowSpan = activeWidget.type.rowSpan
+    val dColSpan = activeWidget.type.colSpan.coerceIn(1, 4)
+
+    if (maxRowsPerPage > 0 && dRowSpan > maxRowsPerPage) {
+        return GridResolutionResult(
+            isValid = false,
+            placements = basePlacements,
+            targetPlacement = null
+        )
+    }
+
+    val safeCol = targetCol.coerceIn(0, 4 - dColSpan)
+    val safeRow = if (maxRowsPerPage > 0) {
+        targetRow.coerceIn(0, maxRowsPerPage - dRowSpan)
+    } else {
+        targetRow.coerceAtLeast(0)
+    }
+
+    val targetPlacement = WidgetPlacement(
+        widget = activeWidget.copy(gridRow = safeRow, gridCol = safeCol),
+        row = safeRow,
+        col = safeCol,
+        rowSpan = dRowSpan,
+        colSpan = dColSpan
+    )
+
+    val existingSelf = basePlacements.find { it.widget.instanceId == activeWidget.instanceId }
+    val others = basePlacements.filter { it.widget.instanceId != activeWidget.instanceId }
+
+    val colliding = others.filter {
+        rectsOverlap(safeRow, safeCol, dRowSpan, dColSpan, it.row, it.col, it.rowSpan, it.colSpan)
+    }
+
+    // Nessuna collisione: tutti gli altri widget restano immobili
+    if (colliding.isEmpty()) {
+        val result = (others + targetPlacement)
+            .sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
+        return GridResolutionResult(
+            isValid = true,
+            placements = result,
+            targetPlacement = targetPlacement
+        )
+    }
+
+    // Verifica rapida della capienza totale in celle della pagina
+    val totalCellsNeeded = (dRowSpan * dColSpan) + others.sumOf { it.rowSpan * it.colSpan }
+    if (maxRowsPerPage > 0 && totalCellsNeeded > maxRowsPerPage * 4) {
+        return GridResolutionResult(
+            isValid = false,
+            placements = basePlacements,
+            targetPlacement = targetPlacement
+        )
+    }
+
+    val limitRows = if (maxRowsPerPage > 0) {
+        maxRowsPerPage
+    } else {
+        maxOf(
+            safeRow + dRowSpan + 6,
+            (others.maxOfOrNull { it.row + it.rowSpan } ?: 0) + 6,
+            24
+        )
+    }
+
+    val nonColliding = others.filter { o -> colliding.none { it.widget.instanceId == o.widget.instanceId } }
+
+    // 1. Caso singolo widget collidente: prova scorrimento sulla stessa riga o swap diretto
+    if (colliding.size == 1) {
+        val other = colliding.first()
+        val occupiedByFixed = mutableSetOf<Pair<Int, Int>>()
+        nonColliding.forEach {
+            markMatrixOccupied(occupiedByFixed, it.row, it.col, it.rowSpan, it.colSpan)
+        }
+        markMatrixOccupied(occupiedByFixed, safeRow, safeCol, dRowSpan, dColSpan)
+
+        // 1a. Scorrimento orizzontale sulla stessa riga
+        val alternateCols = (0..(4 - other.colSpan))
+            .filter { it != other.col }
+            .sortedBy { kotlin.math.abs(it - other.col) }
+        for (altCol in alternateCols) {
+            if (canFitInMatrix(occupiedByFixed, other.row, altCol, other.rowSpan, other.colSpan, maxRowsPerPage)) {
+                val movedOther = other.copy(
+                    col = altCol,
+                    widget = other.widget.copy(gridRow = other.row, gridCol = altCol)
+                )
+                val result = (nonColliding + listOf(movedOther, targetPlacement))
+                    .sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
+                return GridResolutionResult(
+                    isValid = true,
+                    placements = result,
+                    targetPlacement = targetPlacement
+                )
+            }
+        }
+
+        // 1b. Scambio (swap) con la posizione originaria del widget attivo (se era nella stessa pagina)
+        if (existingSelf != null) {
+            val swapRow = existingSelf.row.coerceIn(0, (limitRows - other.rowSpan).coerceAtLeast(0))
+            val swapCol = existingSelf.col.coerceIn(0, 4 - other.colSpan)
+            if (canFitInMatrix(occupiedByFixed, swapRow, swapCol, other.rowSpan, other.colSpan, maxRowsPerPage)) {
+                val swappedOther = other.copy(
+                    row = swapRow,
+                    col = swapCol,
+                    widget = other.widget.copy(gridRow = swapRow, gridCol = swapCol)
+                )
+                val result = (nonColliding + listOf(swappedOther, targetPlacement))
+                    .sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
+                return GridResolutionResult(
+                    isValid = true,
+                    placements = result,
+                    targetPlacement = targetPlacement
+                )
+            }
+        }
+    }
+
+    // Helper per tentare il posizionamento di una lista ordinata di widget nella pagina
+    fun tryPackOthers(orderedOthers: List<WidgetPlacement>, keepNonCollidingFixedFirst: Boolean): Pair<List<WidgetPlacement>, Int>? {
+        val occupied = mutableSetOf<Pair<Int, Int>>()
+        val placed = mutableListOf<WidgetPlacement>()
+        var displacementCost = 0
+
+        markMatrixOccupied(occupied, safeRow, safeCol, dRowSpan, dColSpan)
+        placed.add(targetPlacement)
+
+        val toRelocate = mutableListOf<WidgetPlacement>()
+
+        if (keepNonCollidingFixedFirst) {
+            for (item in orderedOthers) {
+                val isCollidingItem = colliding.any { it.widget.instanceId == item.widget.instanceId }
+                if (!isCollidingItem && canFitInMatrix(occupied, item.row, item.col, item.rowSpan, item.colSpan, maxRowsPerPage)) {
+                    markMatrixOccupied(occupied, item.row, item.col, item.rowSpan, item.colSpan)
+                    placed.add(item)
+                } else {
+                    toRelocate.add(item)
+                }
+            }
+        } else {
+            toRelocate.addAll(orderedOthers)
+        }
+
+        for (item in toRelocate) {
+            if (canFitInMatrix(occupied, item.row, item.col, item.rowSpan, item.colSpan, maxRowsPerPage)) {
+                markMatrixOccupied(occupied, item.row, item.col, item.rowSpan, item.colSpan)
+                placed.add(item)
+                continue
+            }
+
+            val maxCandidateRow = (limitRows - item.rowSpan).coerceAtLeast(0)
+            val maxCandidateCol = (4 - item.colSpan).coerceAtLeast(0)
+
+            val candidateCells = mutableListOf<Pair<Int, Int>>()
+            for (r in 0..maxCandidateRow) {
+                for (c in 0..maxCandidateCol) {
+                    candidateCells.add(r to c)
+                }
+            }
+
+            candidateCells.sortWith(
+                compareBy<Pair<Int, Int>> { (r, c) ->
+                    val distOwn = kotlin.math.abs(r - item.row) * 2 + kotlin.math.abs(c - item.col)
+                    val distSwap = if (existingSelf != null) {
+                        kotlin.math.abs(r - existingSelf.row) * 2 + kotlin.math.abs(c - existingSelf.col) + 1
+                    } else {
+                        Int.MAX_VALUE
+                    }
+                    minOf(distOwn, distSwap)
+                }.thenBy { (r, _) -> kotlin.math.abs(r - item.row) }
+                    .thenBy { (_, c) -> kotlin.math.abs(c - item.col) }
+                    .thenBy { (r, _) -> r }
+                    .thenBy { (_, c) -> c }
+            )
+
+            var foundCell: Pair<Int, Int>? = null
+            for (cell in candidateCells) {
+                if (canFitInMatrix(occupied, cell.first, cell.second, item.rowSpan, item.colSpan, maxRowsPerPage)) {
+                    foundCell = cell
+                    break
+                }
+            }
+
+            if (foundCell == null) {
+                return null
+            }
+
+            markMatrixOccupied(occupied, foundCell.first, foundCell.second, item.rowSpan, item.colSpan)
+            displacementCost += kotlin.math.abs(foundCell.first - item.row) * 3 +
+                    kotlin.math.abs(foundCell.second - item.col) * 2 + 4
+            placed.add(
+                item.copy(
+                    row = foundCell.first,
+                    col = foundCell.second,
+                    widget = item.widget.copy(gridRow = foundCell.first, gridCol = foundCell.second)
+                )
+            )
+        }
+
+        return placed to displacementCost
+    }
+
+    val candidateOrderings = listOf(
+        // Strategia A: mantieni fissi i non-collidenti e sposta solo i collidenti (dal più grande al più piccolo)
+        others.sortedWith(compareByDescending<WidgetPlacement> { it.rowSpan * it.colSpan }.thenBy { it.row }.thenBy { it.col }) to true,
+        // Strategia B: collidenti per primi (così prendono il posto adiacente) e i non-collidenti scalano se necessario
+        (colliding.sortedByDescending { it.rowSpan * it.colSpan } + nonColliding.sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })) to false,
+        // Strategia C: dal più grande al più piccolo (risolve incastri tra 2x2 e 1x1)
+        others.sortedWith(compareByDescending<WidgetPlacement> { it.rowSpan * it.colSpan }.thenBy { it.row }.thenBy { it.col }) to false,
+        // Strategia D: ordine naturale di lettura (riga, colonna)
+        others.sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col }) to false
+    )
+
+    var bestSolution: Pair<List<WidgetPlacement>, Int>? = null
+    for ((ordering, fixNonColliding) in candidateOrderings) {
+        val attempt = tryPackOthers(ordering, fixNonColliding)
+        if (attempt != null) {
+            if (bestSolution == null || attempt.second < bestSolution.second) {
+                bestSolution = attempt
+                if (attempt.second <= 6) break
+            }
+        }
+    }
+
+    if (bestSolution != null) {
+        return GridResolutionResult(
+            isValid = true,
+            placements = bestSolution.first.sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col }),
+            targetPlacement = targetPlacement
+        )
+    }
+
+    return GridResolutionResult(
+        isValid = false,
+        placements = basePlacements,
+        targetPlacement = targetPlacement
+    )
+}
+
 fun resolveMatrixDragLayout(
     basePlacements: List<WidgetPlacement>,
     draggedId: String,
@@ -508,154 +795,12 @@ fun resolveMatrixDragLayout(
     maxRowsPerPage: Int = 0
 ): List<WidgetPlacement> {
     val pDrag = basePlacements.find { it.widget.instanceId == draggedId } ?: return basePlacements
-    val dRowSpan = pDrag.rowSpan
-    val dColSpan = pDrag.colSpan
-    val safeCol = targetCol.coerceIn(0, 4 - dColSpan)
-    var safeRow = targetRow.coerceAtLeast(0)
-
-    if (maxRowsPerPage > 0) {
-        val page = safeRow / maxRowsPerPage
-        val localRow = safeRow % maxRowsPerPage
-        if (localRow + dRowSpan > maxRowsPerPage) {
-            safeRow = page * maxRowsPerPage + (maxRowsPerPage - dRowSpan).coerceAtLeast(0)
-        }
-    }
-
-    val others = basePlacements.filter { it.widget.instanceId != draggedId }
-    val colliding = others.filter {
-        rectsOverlap(safeRow, safeCol, dRowSpan, dColSpan, it.row, it.col, it.rowSpan, it.colSpan)
-    }
-
-    if (safeRow == pDrag.row && safeCol == pDrag.col && colliding.isEmpty()) {
-        return basePlacements
-    }
-
-    if (colliding.isEmpty()) {
-        val result = others.toMutableList()
-        result.add(
-            pDrag.copy(
-                row = safeRow,
-                col = safeCol,
-                widget = pDrag.widget.copy(gridRow = safeRow, gridCol = safeCol)
-            )
-        )
-        return result.sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
-    }
-
-    if (colliding.size == 1) {
-        val other = colliding.first()
-        val nonColliding = others.filter { it.widget.instanceId != other.widget.instanceId }
-        val occupiedByRest = mutableSetOf<Pair<Int, Int>>()
-        nonColliding.forEach {
-            markMatrixOccupied(occupiedByRest, it.row, it.col, it.rowSpan, it.colSpan)
-        }
-        markMatrixOccupied(occupiedByRest, safeRow, safeCol, dRowSpan, dColSpan)
-
-        // 1. Prova scorrimento orizzontale sulla stessa riga per il widget collidente
-        val alternateColsOnSameRow = (0..(4 - other.colSpan)).filter { it != other.col }
-        for (altCol in alternateColsOnSameRow) {
-            if (canFitInMatrix(occupiedByRest, other.row, altCol, other.rowSpan, other.colSpan, maxRowsPerPage)) {
-                val result = nonColliding.toMutableList()
-                result.add(
-                    other.copy(
-                        col = altCol,
-                        widget = other.widget.copy(gridRow = other.row, gridCol = altCol)
-                    )
-                )
-                result.add(
-                    pDrag.copy(
-                        row = safeRow,
-                        col = safeCol,
-                        widget = pDrag.widget.copy(gridRow = safeRow, gridCol = safeCol)
-                    )
-                )
-                return result.sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
-            }
-        }
-
-        // 2. Prova scambio (swap) con la posizione originaria del widget trascinato
-        val swapCol = pDrag.col.coerceIn(0, 4 - other.colSpan)
-        val swapRow = pDrag.row
-        if (canFitInMatrix(occupiedByRest, swapRow, swapCol, other.rowSpan, other.colSpan, maxRowsPerPage)) {
-            val result = nonColliding.toMutableList()
-            result.add(
-                other.copy(
-                    row = swapRow,
-                    col = swapCol,
-                    widget = other.widget.copy(gridRow = swapRow, gridCol = swapCol)
-                )
-            )
-            result.add(
-                pDrag.copy(
-                    row = safeRow,
-                    col = safeCol,
-                    widget = pDrag.widget.copy(gridRow = safeRow, gridCol = safeCol)
-                )
-            )
-            return result.sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
-        }
-    }
-
-    // 3. Fallback generale: posiziona il widget trascinato e sposta solo gli elementi che collidono
-    val occupied = mutableSetOf<Pair<Int, Int>>()
-    val result = mutableListOf<WidgetPlacement>()
-
-    markMatrixOccupied(occupied, safeRow, safeCol, dRowSpan, dColSpan)
-    result.add(
-        pDrag.copy(
-            row = safeRow,
-            col = safeCol,
-            widget = pDrag.widget.copy(gridRow = safeRow, gridCol = safeCol)
-        )
+    val res = resolvePageGridOperation(
+        basePlacements = basePlacements,
+        activeWidget = pDrag.widget,
+        targetRow = targetRow,
+        targetCol = targetCol,
+        maxRowsPerPage = maxRowsPerPage
     )
-
-    val sortedOthers = others.sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
-    for (item in sortedOthers) {
-        if (canFitInMatrix(occupied, item.row, item.col, item.rowSpan, item.colSpan, maxRowsPerPage)) {
-            markMatrixOccupied(occupied, item.row, item.col, item.rowSpan, item.colSpan)
-            result.add(item)
-        } else {
-            var foundRow = -1
-            var foundCol = -1
-            var found = false
-
-            val limitRows = if (maxRowsPerPage > 0) maxRowsPerPage else 60
-            val candidateRows = (0..(limitRows - item.rowSpan)).sortedWith(
-                compareBy<Int> { kotlin.math.abs(it - item.row) }.thenBy { it }
-            )
-            val candidateCols = (0..(4 - item.colSpan)).sortedWith(
-                compareBy<Int> { kotlin.math.abs(it - item.col) }.thenBy { it }
-            )
-
-            for (r in candidateRows) {
-                for (c in candidateCols) {
-                    if (canFitInMatrix(occupied, r, c, item.rowSpan, item.colSpan, maxRowsPerPage)) {
-                        found = true
-                        foundRow = r
-                        foundCol = c
-                        break
-                    }
-                }
-                if (found) break
-            }
-
-            if (found) {
-                markMatrixOccupied(occupied, foundRow, foundCol, item.rowSpan, item.colSpan)
-                result.add(
-                    item.copy(
-                        row = foundRow,
-                        col = foundCol,
-                        widget = item.widget.copy(gridRow = foundRow, gridCol = foundCol)
-                    )
-                )
-            }
-        }
-    }
-
-    if (result.size < basePlacements.size) {
-        // Se non è stato possibile ricollocare tutti gli elementi senza perdita, preserva il layout originale
-        return basePlacements
-    }
-
-    return result.sortedWith(compareBy<WidgetPlacement> { it.row }.thenBy { it.col })
+    return if (res.isValid) res.placements else basePlacements
 }

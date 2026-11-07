@@ -15,8 +15,8 @@ android {
         applicationId = "com.example.closet"
         minSdk = 26
         targetSdk = 35
-        versionCode = 115
-        versionName = "1.4.01"
+        versionCode = 117
+        versionName = "1.4.03"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
