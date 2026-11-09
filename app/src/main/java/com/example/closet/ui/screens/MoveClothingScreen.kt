@@ -3,6 +3,8 @@
 package com.example.closet.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -16,6 +18,10 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,12 +39,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import com.example.closet.ui.viewmodel.ClosetViewModel
 import java.time.format.DateTimeFormatter
@@ -135,8 +144,29 @@ fun MoveClothingScreen(
         selectedQuantities.values.sum()
     }
 
-    val topFadeColor = if (colors.isDark) Color(0xFF0F1217) else Color(0xFFF0F2F6)
-    val bottomFadeColor = colors.fadeColorBottom
+    val topFadeColor = when {
+        viewModel.currentTheme == AppTheme.AMOLED -> Color.Black
+        colors.isDark -> Color(0xFF13171E)
+        else -> Color(0xFFF2F4F8)
+    }
+    val bottomFadeColor = when {
+        viewModel.currentTheme == AppTheme.AMOLED -> Color.Black
+        colors.isDark -> colors.fadeColorBottom
+        else -> Color(0xFFE8EBF0)
+    }
+
+    val gridState = rememberLazyGridState()
+    val listState = rememberLazyListState()
+    val isScrolled = if (viewMode == ViewMode.GRID) {
+        gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 4
+    } else {
+        listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 4
+    }
+    val topFadeAlpha by animateFloatAsState(
+        targetValue = if (isScrolled) 1f else 0f,
+        animationSpec = tween(180),
+        label = "moveTopFadeAlpha"
+    )
 
     Box(
         modifier = Modifier
@@ -482,6 +512,7 @@ fun MoveClothingScreen(
                 if (viewMode == ViewMode.GRID) {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
+                        state = gridState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(top = 8.dp, bottom = 90.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -544,6 +575,7 @@ fun MoveClothingScreen(
                     }
                 } else {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(top = 8.dp, bottom = 90.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -610,8 +642,9 @@ fun MoveClothingScreen(
                         .align(Alignment.TopCenter)
                         .offset(y = (-8).dp)
                         .fillMaxWidth()
-                        .height(20.dp)
-                        .background(Brush.verticalGradient(listOf(topFadeColor, topFadeColor.copy(alpha = 0.5f), Color.Transparent)))
+                        .height(24.dp)
+                        .graphicsLayer { alpha = topFadeAlpha }
+                        .background(Brush.verticalGradient(listOf(topFadeColor, topFadeColor.copy(alpha = 0.6f), Color.Transparent)))
                         .zIndex(10f)
                 )
 
@@ -825,125 +858,157 @@ fun MoveClothingScreen(
     }
 
     if (showHistorySheet) {
-        ModalBottomSheet(
+        Dialog(
             onDismissRequest = { showHistorySheet = false },
-            containerColor = colors.dialogBackground,
-            dragHandle = {
-                Box(
-                    modifier = Modifier
-                        .padding(vertical = 10.dp)
-                        .width(40.dp)
-                        .height(4.dp)
-                        .background(colors.textSecondary.copy(alpha = 0.3f), CircleShape)
-                )
-            },
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+            properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            Column(
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 36.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 24.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "Cronologia Spostamenti (Ultimi 5)",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary
-                )
-                Text(
-                    text = "Tocca uno spostamento per impostare in automatico la partenza inversa e pre-selezionare i capi trasferiti.",
-                    fontSize = 12.sp,
-                    color = colors.textSecondary
-                )
+                Surface(
+                    shape = RoundedCornerShape(28.dp),
+                    color = colors.dialogBackground,
+                    border = BorderStroke(0.5.dp, colors.cardBorder),
+                    tonalElevation = 8.dp,
+                    shadowElevation = 24.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Cronologia Spostamenti",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textPrimary
+                            )
+                            IconButton(onClick = { showHistorySheet = false }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Chiudi",
+                                    tint = colors.textSecondary
+                                )
+                            }
+                        }
 
-                if (viewModel.transferHistory.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Nessun trasferimento precedente registrato.", color = colors.textMuted, fontSize = 13.sp)
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 320.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(viewModel.transferHistory.take(5), key = { it.id }) { record ->
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = colors.surfaceSecondary,
-                                border = BorderStroke(0.5.dp, colors.cardBorder),
+                        Text(
+                            text = "Tocca uno spostamento per impostare in automatico la partenza inversa e pre-selezionare i capi trasferiti.",
+                            fontSize = 12.sp,
+                            color = colors.textSecondary
+                        )
+
+                        if (viewModel.transferHistory.isEmpty()) {
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable {
-                                        sourceCloset = record.toCloset
-                                        destCloset = record.fromCloset
-                                        selectedQuantities.clear()
-
-                                        record.itemsMoved.forEach { detail ->
-                                            val found = viewModel.clothingItems.firstOrNull {
-                                                (it.id == detail.itemId || it.name.equals(detail.itemName, ignoreCase = true)) &&
-                                                        it.closetName == record.toCloset
-                                            }
-                                            if (found != null) {
-                                                selectedQuantities[found.id] = detail.quantity.coerceAtMost(found.quantity)
-                                            }
-                                        }
-
-                                        currentFolder = null
-                                        showHistorySheet = false
-                                    }
+                                    .padding(vertical = 24.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = record.timestamp.format(DateTimeFormatter.ofPattern("dd/MM/yyyy 'ore' HH:mm")),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = screenAccent
-                                        )
-                                        Text(
-                                            text = "Tocca per invertire",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = screenAccent
-                                        )
-                                    }
+                                Text("Nessun trasferimento precedente registrato.", color = colors.textMuted, fontSize = 13.sp)
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 320.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(viewModel.transferHistory.take(5), key = { it.id }) { record ->
+                                    Surface(
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = colors.surfaceSecondary,
+                                        border = BorderStroke(0.5.dp, colors.cardBorder),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                sourceCloset = record.toCloset
+                                                destCloset = record.fromCloset
+                                                selectedQuantities.clear()
 
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Text(record.fromCloset, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = screenAccent, modifier = Modifier.size(14.dp))
-                                        Text(record.toCloset, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                    }
+                                                record.itemsMoved.forEach { detail ->
+                                                    val found = viewModel.clothingItems.firstOrNull {
+                                                        (it.id == detail.itemId || it.name.equals(detail.itemName, ignoreCase = true)) &&
+                                                                it.closetName == record.toCloset
+                                                    }
+                                                    if (found != null) {
+                                                        selectedQuantities[found.id] = detail.quantity.coerceAtMost(found.quantity)
+                                                    }
+                                                }
 
-                                    val summaryText = record.itemsMoved.joinToString(", ") {
-                                        if (it.quantity > 1) "${it.quantity}x ${it.itemName}" else it.itemName
+                                                currentFolder = null
+                                                showHistorySheet = false
+                                            }
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(14.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = record.timestamp.format(DateTimeFormatter.ofPattern("dd/MM/yyyy 'ore' HH:mm")),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = screenAccent
+                                                )
+                                                Text(
+                                                    text = "Tocca per invertire",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = screenAccent
+                                                )
+                                            }
+
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text(record.fromCloset, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = screenAccent, modifier = Modifier.size(14.dp))
+                                                Text(record.toCloset, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            }
+
+                                            val summaryText = record.itemsMoved.joinToString(", ") {
+                                                if (it.quantity > 1) "${it.quantity}x ${it.itemName}" else it.itemName
+                                            }
+                                            Text(
+                                                text = summaryText,
+                                                color = colors.textSecondary,
+                                                fontSize = 11.5.sp,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
-                                    Text(
-                                        text = summaryText,
-                                        color = colors.textSecondary,
-                                        fontSize = 11.5.sp,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
                                 }
                             }
+                        }
+
+                        Button(
+                            onClick = { showHistorySheet = false },
+                            colors = ButtonDefaults.buttonColors(containerColor = screenAccent),
+                            shape = CircleShape,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                        ) {
+                            Text("Chiudi", color = Color.White, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -952,33 +1017,53 @@ fun MoveClothingScreen(
     }
 
     if (showCustomizeSheet) {
-        ModalBottomSheet(
+        Dialog(
             onDismissRequest = { showCustomizeSheet = false },
-            containerColor = colors.dialogBackground,
-            dragHandle = {
-                Box(
-                    modifier = Modifier
-                        .padding(vertical = 10.dp)
-                        .width(40.dp)
-                        .height(4.dp)
-                        .background(colors.textSecondary.copy(alpha = 0.3f), CircleShape)
-                )
-            },
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+            properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            Column(
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 36.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 24.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = if (isLaundryMode) "Personalizzazione Panni" else "Personalizzazione Spostamento",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary
-                )
+                Surface(
+                    shape = RoundedCornerShape(28.dp),
+                    color = colors.dialogBackground,
+                    border = BorderStroke(0.5.dp, colors.cardBorder),
+                    tonalElevation = 8.dp,
+                    shadowElevation = 24.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = if (isLaundryMode) "Personalizzazione Panni" else "Personalizzazione Spostamento",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textPrimary
+                            )
+                            IconButton(onClick = { showCustomizeSheet = false }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Chiudi",
+                                    tint = colors.textSecondary
+                                )
+                            }
+                        }
+                    }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1158,6 +1243,7 @@ fun MoveClothingScreen(
             }
         }
     }
+}
 }
 
 // --- CARD PER LA SELEZIONE DEI CAPI NELLA VALIGIA / SPOSTAMENTO / PANNI ---

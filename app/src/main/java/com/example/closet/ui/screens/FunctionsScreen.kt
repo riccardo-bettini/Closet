@@ -454,7 +454,7 @@ fun FunctionsScreen(
             allFunctions.find { it.targetSubScreen == currentSubScreen }
         }
 
-        if (activeDef != null && currentSubScreen != FunctionSubScreen.TOOLS) {
+        if (activeDef != null && currentSubScreen != FunctionSubScreen.TOOLS && currentSubScreen != FunctionSubScreen.CALENDAR) {
             FunctionInfoButtonWithPopup(
                 title = activeDef.title,
                 description = activeDef.subtitle,

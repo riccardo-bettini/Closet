@@ -11,6 +11,7 @@ import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.closet.MainActivity
+import com.example.closet.R
 import java.time.format.DateTimeFormatter
 
 class ReminderReceiver : BroadcastReceiver() {
@@ -108,11 +109,12 @@ class ReminderReceiver : BroadcastReceiver() {
         }
 
         val builder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(titleText)
             .setContentText(subtitleText)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setContentIntent(contentPendingIntent)
             .addAction(android.R.drawable.ic_popup_sync, "Rinvia 15m", snoozePendingIntent)
@@ -198,7 +200,10 @@ class ReminderReceiver : BroadcastReceiver() {
             val name = "Promemoria ($suffix)"
             val importance = if (sound || vibrate) NotificationManager.IMPORTANCE_HIGH else NotificationManager.IMPORTANCE_LOW
             val channel = NotificationChannel(channelId, name, importance).apply {
-                description = "Notifiche dei promemoria con profilo $suffix"
+                description = "Notifiche dei promemoria Closet ($suffix)"
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                setShowBadge(true)
+                enableLights(true)
                 if (sound) {
                     val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
                     val audioAttributes = AudioAttributes.Builder()

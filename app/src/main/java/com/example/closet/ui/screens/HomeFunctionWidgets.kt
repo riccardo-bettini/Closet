@@ -1462,12 +1462,12 @@ fun UtilityLevelWidget1x2() {
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Box(
-            modifier = Modifier.size(54.dp),
+            modifier = Modifier.size(46.dp),
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
@@ -1515,12 +1515,12 @@ fun UtilityLevelWidget1x2() {
 
                 drawCircle(
                     color = levelColor.copy(alpha = 0.25f),
-                    radius = 9.dp.toPx(),
+                    radius = 8.dp.toPx(),
                     center = bubbleCenter
                 )
                 drawCircle(
                     color = levelColor,
-                    radius = 6.dp.toPx(),
+                    radius = 5.dp.toPx(),
                     center = bubbleCenter
                 )
             }
@@ -1530,32 +1530,30 @@ fun UtilityLevelWidget1x2() {
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.Center
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = if (isLevel) Color(0xFF10B981).copy(alpha = 0.18f) else colors.accent.copy(alpha = 0.15f)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (isLevel) Color(0xFF10B981).copy(alpha = 0.18f) else colors.accent.copy(alpha = 0.15f)
-                ) {
-                    Text(
-                        text = if (isLevel) "IN BOLLA" else "INCLINATA",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black,
-                        color = if (isLevel) Color(0xFF10B981) else colors.accent,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
+                Text(
+                    text = if (isLevel) "IN BOLLA" else "INCLINATA",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = if (isLevel) Color(0xFF10B981) else colors.accent,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
             }
 
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
             Text(
                 text = "X: ${roll.roundToInt()}° • Y: ${pitch.roundToInt()}°",
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 color = colors.textSecondary,
                 maxLines = 1,
+                softWrap = false,
                 overflow = TextOverflow.Ellipsis
             )
         }
@@ -1676,14 +1674,86 @@ fun UtilityLevelWidget2x4() {
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .padding(14.dp),
+            .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Quadrante circolare della livella a dimensione piena stile orologio analogico
         Box(
-            modifier = Modifier.size(120.dp)
+            modifier = Modifier.size(116.dp),
+            contentAlignment = Alignment.Center
         ) {
-            UtilityLevelWidget2x2()
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val radius = size.minDimension / 2f - 2.dp.toPx()
+                val center = Offset(size.width / 2f, size.height / 2f)
+
+                // Sfondo quadrante
+                drawCircle(
+                    color = colors.surfaceSecondary,
+                    radius = radius,
+                    center = center
+                )
+                // Bordo esterno
+                drawCircle(
+                    color = if (isLevel) Color(0xFF10B981).copy(alpha = 0.75f) else colors.cardBorder,
+                    radius = radius,
+                    center = center,
+                    style = Stroke(width = 1.5.dp.toPx())
+                )
+
+                // Cerchio guida intermedio
+                drawCircle(
+                    color = colors.textMuted.copy(alpha = 0.2f),
+                    radius = radius * 0.62f,
+                    center = center,
+                    style = Stroke(width = 1.dp.toPx())
+                )
+
+                // Cerchio centrale bersaglio
+                drawCircle(
+                    color = if (isLevel) Color(0xFF10B981).copy(alpha = 0.45f) else colors.textMuted.copy(alpha = 0.35f),
+                    radius = radius * 0.28f,
+                    center = center,
+                    style = Stroke(width = 1.2.dp.toPx())
+                )
+
+                // Linee mirino
+                drawLine(
+                    color = colors.textMuted.copy(alpha = 0.25f),
+                    start = Offset(center.x - radius * 0.85f, center.y),
+                    end = Offset(center.x + radius * 0.85f, center.y),
+                    strokeWidth = 1.dp.toPx()
+                )
+                drawLine(
+                    color = colors.textMuted.copy(alpha = 0.25f),
+                    start = Offset(center.x, center.y - radius * 0.85f),
+                    end = Offset(center.x, center.y + radius * 0.85f),
+                    strokeWidth = 1.dp.toPx()
+                )
+
+                // Posizione bolla
+                val maxTilt = 45f
+                val normX = (roll / maxTilt).coerceIn(-1f, 1f)
+                val normY = (pitch / maxTilt).coerceIn(-1f, 1f)
+                val maxOffset = radius * 0.65f
+                val bubbleCenter = Offset(
+                    x = center.x + normX * maxOffset,
+                    y = center.y + normY * maxOffset
+                )
+
+                // Alone luminoso bolla
+                drawCircle(
+                    color = levelColor.copy(alpha = 0.3f),
+                    radius = 16.dp.toPx(),
+                    center = bubbleCenter
+                )
+                // Bolla piena
+                drawCircle(
+                    color = levelColor,
+                    radius = 10.dp.toPx(),
+                    center = bubbleCenter
+                )
+            }
         }
 
         Column(
@@ -1694,7 +1764,8 @@ fun UtilityLevelWidget2x4() {
                 text = "LIVELLA A BOLLA",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = levelColor
+                color = levelColor,
+                letterSpacing = 0.5.sp
             )
             Text(
                 text = if (isLevel) "In bolla" else "Inclinata",

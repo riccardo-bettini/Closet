@@ -17,6 +17,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.closet.ui.screens.AppTheme
 import com.example.closet.ui.screens.CalendarEvent
+import com.example.closet.ui.screens.SchoolLesson
+import java.time.DayOfWeek
 import com.example.closet.ui.screens.ClothingItem
 import com.example.closet.ui.screens.FavoriteActionType
 import com.example.closet.ui.screens.HomeLayoutMode
@@ -343,6 +345,12 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
 
     val trashEvents = mutableStateListOf<CalendarEvent>()
 
+    // ORARIO SETTIMANALE LEZIONI
+    val schoolLessons = mutableStateListOf<SchoolLesson>()
+    var schoolScheduleStartDate by mutableStateOf<LocalDate?>(null)
+    var schoolScheduleEndDate by mutableStateOf<LocalDate?>(null)
+    var showSchoolLessonsOnCalendar by mutableStateOf(true)
+
     // PROMEMORIA (REMINDERS)
     val reminders = mutableStateListOf<ReminderItem>()
     var notificationsSoundEnabled by mutableStateOf(true)
@@ -375,6 +383,7 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
         loadActiveLaundryTransfers()
         loadActiveTrip()
         loadCalendarEvents()
+        loadSchoolLessons()
         loadTrashEvents()
         loadReminders()
         loadNotificationSettings()
@@ -1445,6 +1454,105 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
             } catch (_: Exception) {
                 eventsMap = emptyMap()
             }
+        }
+    }
+
+    // --- METODI ORARIO SETTIMANALE LEZIONI ---
+
+    fun addSchoolLesson(lesson: SchoolLesson) {
+        schoolLessons.add(lesson)
+        saveSchoolLessons()
+    }
+
+    fun updateSchoolLesson(lesson: SchoolLesson) {
+        val index = schoolLessons.indexOfFirst { it.id == lesson.id }
+        if (index != -1) {
+            schoolLessons[index] = lesson
+            saveSchoolLessons()
+        }
+    }
+
+    fun deleteSchoolLesson(lessonId: String) {
+        schoolLessons.removeAll { it.id == lessonId }
+        saveSchoolLessons()
+    }
+
+    fun updateSchoolSchedulePeriod(start: LocalDate?, end: LocalDate?) {
+        schoolScheduleStartDate = start
+        schoolScheduleEndDate = end
+        saveSchoolLessons()
+    }
+
+    fun toggleSchoolLessonsVisibility() {
+        showSchoolLessonsOnCalendar = !showSchoolLessonsOnCalendar
+        viewModelScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("show_school_lessons_on_calendar", showSchoolLessonsOnCalendar).apply()
+        }
+    }
+
+    fun getLessonsForDate(date: LocalDate): List<SchoolLesson> {
+        if (!showSchoolLessonsOnCalendar) return emptyList()
+        val start = schoolScheduleStartDate
+        val end = schoolScheduleEndDate
+        if (start != null && date.isBefore(start)) return emptyList()
+        if (end != null && date.isAfter(end)) return emptyList()
+        return schoolLessons.filter { it.dayOfWeek == date.dayOfWeek }.sortedBy { it.startTime }
+    }
+
+    fun saveSchoolLessons() {
+        val snapshot = schoolLessons.toList()
+        val sDate = schoolScheduleStartDate?.toString()
+        val eDate = schoolScheduleEndDate?.toString()
+        val isVis = showSchoolLessonsOnCalendar
+        viewModelScope.launch(Dispatchers.IO) {
+            val array = JSONArray()
+            snapshot.forEach { l ->
+                val obj = JSONObject().apply {
+                    put("id", l.id)
+                    put("subject", l.subject)
+                    put("room", l.room)
+                    put("dayOfWeek", l.dayOfWeek.name)
+                    put("startTime", l.startTime)
+                    put("endTime", l.endTime)
+                    put("color", l.color.toArgb())
+                }
+                array.put(obj)
+            }
+            prefs.edit()
+                .putString("school_lessons", array.toString())
+                .putString("school_schedule_start", sDate)
+                .putString("school_schedule_end", eDate)
+                .putBoolean("show_school_lessons_on_calendar", isVis)
+                .apply()
+        }
+    }
+
+    fun loadSchoolLessons() {
+        showSchoolLessonsOnCalendar = prefs.getBoolean("show_school_lessons_on_calendar", true)
+        val startStr = prefs.getString("school_schedule_start", null)
+        val endStr = prefs.getString("school_schedule_end", null)
+        schoolScheduleStartDate = startStr?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        schoolScheduleEndDate = endStr?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+
+        val raw = prefs.getString("school_lessons", null)
+        schoolLessons.clear()
+        if (!raw.isNullOrBlank()) {
+            try {
+                val array = JSONArray(raw)
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val lesson = SchoolLesson(
+                        id = obj.getString("id"),
+                        subject = obj.getString("subject"),
+                        room = obj.optString("room", ""),
+                        dayOfWeek = DayOfWeek.valueOf(obj.getString("dayOfWeek")),
+                        startTime = obj.getString("startTime"),
+                        endTime = obj.getString("endTime"),
+                        color = Color(obj.getInt("color"))
+                    )
+                    schoolLessons.add(lesson)
+                }
+            } catch (_: Exception) {}
         }
     }
 

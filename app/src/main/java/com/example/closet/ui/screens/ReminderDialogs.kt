@@ -2,10 +2,17 @@
 
 package com.example.closet.ui.screens
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.*
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,6 +25,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,10 +41,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -68,8 +79,27 @@ fun ReminderListDialog(
     onDismiss: () -> Unit
 ) {
     val colors = LocalOneUIColors.current
+    val context = LocalContext.current
     var editingReminder by remember { mutableStateOf<ReminderItem?>(null) }
     var isCreatingNew by remember { mutableStateOf(false) }
+
+    var hasNotificationPermission by remember {
+        mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled())
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasNotificationPermission = isGranted || NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -144,7 +174,57 @@ fun ReminderListDialog(
 
                 HorizontalDivider(color = colors.cardBorder, modifier = Modifier.padding(bottom = 12.dp))
 
-                // Contenuto: Lista dei promemoria impostati
+                // Banner avviso se le notifiche sono disabilitate nel sistema
+                if (!hasNotificationPermission) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                        border = BorderStroke(0.8.dp, Color(0xFFEF4444).copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp)
+                            .clickable {
+                                val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                    }
+                                } else {
+                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = android.net.Uri.fromParts("package", context.packageName, null)
+                                    }
+                                }
+                                context.startActivity(intent)
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.NotificationsOff,
+                                contentDescription = null,
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Notifiche disabilitate",
+                                    color = Color(0xFFEF4444),
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Tocca qui per consentire le notifiche nelle impostazioni di sistema.",
+                                    color = colors.textSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Contenuto: Lista dei promemoria impostati con sfumature di uscita in alto e in basso
                 if (viewModel.reminders.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -185,27 +265,83 @@ fun ReminderListDialog(
                         }
                     }
                 } else {
-                    LazyColumn(
+                    val listState = rememberLazyListState()
+                    val topFadeAlpha by animateFloatAsState(
+                        targetValue = if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 4) 1f else 0f,
+                        animationSpec = tween(180),
+                        label = "remindersTopFade"
+                    )
+                    val bottomFadeAlpha by animateFloatAsState(
+                        targetValue = if (listState.canScrollForward) 1f else 0f,
+                        animationSpec = tween(180),
+                        label = "remindersBottomFade"
+                    )
+
+                    Box(
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                            .fillMaxWidth()
                     ) {
-                        items(viewModel.reminders, key = { it.id }) { reminder ->
-                            ReminderCardItem(
-                                reminder = reminder,
-                                onToggle = { enabled ->
-                                    viewModel.toggleReminder(reminder.id, enabled)
-                                },
-                                onClick = {
-                                    editingReminder = reminder
-                                    isCreatingNew = false
-                                },
-                                onDelete = {
-                                    viewModel.deleteReminder(reminder.id)
-                                }
-                            )
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(top = 4.dp, bottom = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(viewModel.reminders, key = { it.id }) { reminder ->
+                                ReminderCardItem(
+                                    reminder = reminder,
+                                    onToggle = { enabled ->
+                                        viewModel.toggleReminder(reminder.id, enabled)
+                                    },
+                                    onClick = {
+                                        editingReminder = reminder
+                                        isCreatingNew = false
+                                    },
+                                    onDelete = {
+                                        viewModel.deleteReminder(reminder.id)
+                                    }
+                                )
+                            }
                         }
+
+                        // Sfumatura morbida in uscita in alto
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .fillMaxWidth()
+                                .height(22.dp)
+                                .graphicsLayer { alpha = topFadeAlpha }
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            colors.dialogBackground,
+                                            colors.dialogBackground.copy(alpha = 0.7f),
+                                            Color.Transparent
+                                        )
+                                    )
+                                )
+                                .zIndex(10f)
+                        )
+
+                        // Sfumatura morbida in uscita in basso
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(26.dp)
+                                .graphicsLayer { alpha = bottomFadeAlpha }
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            Color.Transparent,
+                                            colors.dialogBackground.copy(alpha = 0.7f),
+                                            colors.dialogBackground
+                                        )
+                                    )
+                                )
+                                .zIndex(10f)
+                        )
                     }
                 }
             }
@@ -458,6 +594,12 @@ fun ReminderEditDialog(
 
     val timeFormatter = remember { DateTimeFormatter.ofPattern("HH:mm") }
 
+    val isTimeInPast = remember(isRecurring, selectedDate, selectedTime) {
+        if (!isRecurring && selectedDate == LocalDate.now()) {
+            selectedTime.isBefore(LocalTime.now())
+        } else false
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -507,6 +649,7 @@ fun ReminderEditDialog(
 
                     TextButton(
                         onClick = {
+                            if (isTimeInPast) return@TextButton
                             val finalLead = if (isCustomLeadTime) {
                                 customLeadMinutesText.toIntOrNull()?.coerceAtLeast(1) ?: 15
                             } else leadTimeMinutes
@@ -529,7 +672,11 @@ fun ReminderEditDialog(
                             )
                             onSave(updated)
                         },
-                        colors = ButtonDefaults.textButtonColors(contentColor = colors.accent)
+                        enabled = !isTimeInPast,
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = colors.accent,
+                            disabledContentColor = colors.textSecondary.copy(alpha = 0.4f)
+                        )
                     ) {
                         Text(
                             text = "Salva",
@@ -541,15 +688,31 @@ fun ReminderEditDialog(
 
                 HorizontalDivider(color = colors.cardBorder)
 
-                // Corpo scorrevole delle impostazioni
-                Column(
+                // Corpo scorrevole delle impostazioni con sfumature di uscita in alto e in basso
+                val editScrollState = rememberScrollState()
+                val editTopFadeAlpha by animateFloatAsState(
+                    targetValue = if (editScrollState.value > 6) 1f else 0f,
+                    animationSpec = tween(180),
+                    label = "editReminderTopFade"
+                )
+                val editBottomFadeAlpha by animateFloatAsState(
+                    targetValue = if (editScrollState.canScrollForward) 1f else 0f,
+                    animationSpec = tween(180),
+                    label = "editReminderBottomFade"
+                )
+
+                Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .padding(vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(editScrollState)
+                            .padding(vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
                     // 1. NOME NOTIFICA
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
@@ -715,7 +878,7 @@ fun ReminderEditDialog(
                         Surface(
                             shape = RoundedCornerShape(14.dp),
                             color = colors.surfaceSecondary,
-                            border = BorderStroke(1.dp, colors.cardBorder),
+                            border = BorderStroke(1.dp, if (isTimeInPast) Color(0xFFEF4444).copy(alpha = 0.8f) else colors.cardBorder),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { showTimeWheelPicker = true }
@@ -734,12 +897,12 @@ fun ReminderEditDialog(
                                     Icon(
                                         imageVector = Icons.Outlined.Schedule,
                                         contentDescription = null,
-                                        tint = colors.accent,
+                                        tint = if (isTimeInPast) Color(0xFFEF4444) else colors.accent,
                                         modifier = Modifier.size(20.dp)
                                     )
                                     Text(
                                         text = selectedTime.format(timeFormatter),
-                                        color = colors.textPrimary,
+                                        color = if (isTimeInPast) Color(0xFFEF4444) else colors.textPrimary,
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -747,10 +910,38 @@ fun ReminderEditDialog(
 
                                 Text(
                                     text = "Cambia orario",
-                                    color = colors.accent,
+                                    color = if (isTimeInPast) Color(0xFFEF4444) else colors.accent,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
+                            }
+                        }
+
+                        if (isTimeInPast) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                                border = BorderStroke(0.8.dp, Color(0xFFEF4444).copy(alpha = 0.45f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.ErrorOutline,
+                                        contentDescription = null,
+                                        tint = Color(0xFFEF4444),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "L'orario selezionato è già trascorso per oggi. Scegli un orario futuro o seleziona 'Domani'.",
+                                        color = Color(0xFFEF4444),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
                             }
                         }
                     }
@@ -1044,6 +1235,45 @@ fun ReminderEditDialog(
                         }
                     }
                 }
+
+                // Sfumatura morbida in uscita in alto
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .height(22.dp)
+                        .graphicsLayer { alpha = editTopFadeAlpha }
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    colors.dialogBackground,
+                                    colors.dialogBackground.copy(alpha = 0.7f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                        .zIndex(10f)
+                )
+
+                // Sfumatura morbida in uscita in basso
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(26.dp)
+                        .graphicsLayer { alpha = editBottomFadeAlpha }
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color.Transparent,
+                                    colors.dialogBackground.copy(alpha = 0.7f),
+                                    colors.dialogBackground
+                                )
+                            )
+                        )
+                        .zIndex(10f)
+                )
+            }
             }
         }
     }

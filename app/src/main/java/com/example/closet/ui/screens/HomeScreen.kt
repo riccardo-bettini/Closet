@@ -3918,7 +3918,9 @@ fun FlowWidgetLayout(
                 sharedCornerRadius = sharedCornerRadius,
                 targetPlacement = activeResolution.targetPlacement,
                 isTargetValid = activeResolution.isValid,
-                editModeScale = editModeSpringScale
+                editModeScale = editModeSpringScale,
+                activePlacements = displayPlacements,
+                draggedWidgetId = localDraggedWidgetId ?: externalDragHostId
             )
         }
 
@@ -4596,46 +4598,42 @@ private fun HomeGridCellsBackdrop(
     sharedCornerRadius: Dp,
     targetPlacement: WidgetPlacement?,
     isTargetValid: Boolean,
-    editModeScale: Float
+    editModeScale: Float,
+    activePlacements: List<WidgetPlacement> = emptyList(),
+    draggedWidgetId: String? = null
 ) {
     val colors = LocalOneUIColors.current
     val cellStepDp = unitCellSize + spacing
 
     val dotColor = if (colors.isDark) {
-        Color.White.copy(alpha = 0.35f)
+        Color.White.copy(alpha = 0.15f)
     } else {
-        Color.Black.copy(alpha = 0.25f)
+        Color.Black.copy(alpha = 0.10f)
     }
 
     Box(modifier = Modifier.fillMaxSize().zIndex(0.2f)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val stepPx = cellStepDp.toPx()
             val spacingPx = spacing.toPx()
-            val dotRadius = 2.2.dp.toPx()
+            val dotRadius = 1.9.dp.toPx()
 
-            // Puntini classici nei punti di incrocio della griglia virtuale (ai 4 angoli di ciascun quadrato virtuale)
-            val xCoords = FloatArray(cols + 1) { c ->
-                when (c) {
-                    0 -> 2.dp.toPx()
-                    cols -> size.width - 2.dp.toPx()
-                    else -> c * stepPx - spacingPx / 2f
-                }
-            }
-            val yCoords = FloatArray(rows + 1) { r ->
-                when (r) {
-                    0 -> 2.dp.toPx()
-                    rows -> size.height - 2.dp.toPx()
-                    else -> r * stepPx - spacingPx / 2f
-                }
-            }
-
-            for (x in xCoords) {
-                for (y in yCoords) {
-                    drawCircle(
-                        color = dotColor,
-                        radius = dotRadius,
-                        center = Offset(x, y)
-                    )
+            // Disegna solo i puntini d'intersezione INTERNI (esclude i bordi c=0, c=cols, r=0, r=rows)
+            // e salta i puntini coperti internamente da widget esistenti
+            for (c in 1 until cols) {
+                val x = c * stepPx - spacingPx / 2f
+                for (r in 1 until rows) {
+                    val isCovered = activePlacements.any { p ->
+                        if (p.widget.instanceId == draggedWidgetId) return@any false
+                        c > p.col && c < (p.col + p.colSpan) && r > p.row && r < (p.row + p.rowSpan)
+                    }
+                    if (!isCovered) {
+                        val y = r * stepPx - spacingPx / 2f
+                        drawCircle(
+                            color = dotColor,
+                            radius = dotRadius,
+                            center = Offset(x, y)
+                        )
+                    }
                 }
             }
         }

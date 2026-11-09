@@ -585,7 +585,7 @@ fun ToolsScreen(
                             val pitch = compassReading.pitchDegrees
                             val roll = compassReading.rollDegrees
                             val isLevel = abs(pitch) < 1.5f && abs(roll) < 1.5f
-                            val levelColor = if (isLevel) Color(0xFF10B981) else colors.accent
+                            val levelColor = Color(0xFF10B981)
 
                             ToolDisplayGridCard(
                                 modifier = cardModifier,
@@ -1120,12 +1120,12 @@ fun ToolDisplayGridCard(
         shape = RoundedCornerShape(24.dp),
         color = colors.cardBackground,
         border = BorderStroke(
-            width = if (isDragging) 2.dp else if (isActive || isEditMode) 1.5.dp else 1.dp,
+            width = if (isDragging) 2.dp else if (isActive || isEditMode) 1.8.dp else 1.5.dp,
             color = when {
                 isDragging -> colors.accent
-                isEditMode -> colors.accent.copy(alpha = 0.6f)
-                isActive -> accentColor.copy(alpha = 0.7f)
-                else -> colors.cardBorder
+                isEditMode -> accentColor.copy(alpha = 0.85f)
+                isActive -> accentColor.copy(alpha = 0.95f)
+                else -> accentColor.copy(alpha = 0.70f)
             }
         ),
         tonalElevation = 2.dp,

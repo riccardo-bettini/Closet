@@ -599,59 +599,23 @@ fun HomePageIndicator(
             }
         }
         PageIndicatorPosition.RIGHT, PageIndicatorPosition.LEFT -> {
-            // INDICATORE VERTICALE LATERALE (posizionato a bordo schermo nel margine, senza toccare i widget)
+            // INDICATORE VERTICALE LATERALE (centrato nello spazio di 16 dp tra i widget e il bordo dello schermo)
             val isRight = position == PageIndicatorPosition.RIGHT
-            val alignment = if (isRight) Alignment.CenterEnd else Alignment.CenterStart
-            val paddingModifier = if (isRight) Modifier.padding(end = 2.dp) else Modifier.padding(start = 2.dp)
+            val sideMargin = 16.dp
 
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(paddingModifier)
                     .graphicsLayer { alpha = animatedAlpha },
-                contentAlignment = alignment
+                contentAlignment = if (isRight) Alignment.CenterEnd else Alignment.CenterStart
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                // Fascia laterale di 16 dp: l'indicatore è perfettamente centrato in questo spazio
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(sideMargin),
+                    contentAlignment = Alignment.Center
                 ) {
-                    if (isRight) {
-                        // Badge pagina fluttuante posizionato alla sinistra dell'indicatore
-                        AnimatedVisibility(
-                            visible = isDragging,
-                            enter = fadeIn(tween(150)) + scaleIn(spring(stiffness = Spring.StiffnessMediumLow)),
-                            exit = fadeOut(tween(150)) + scaleOut(spring(stiffness = Spring.StiffnessMediumLow))
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = colors.islandBackground,
-                                border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.6f)),
-                                shadowElevation = 8.dp,
-                                tonalElevation = 4.dp
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                ) {
-                                    Text(
-                                        text = "${currentPage + 1}",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = colors.accent
-                                    )
-                                    Text(
-                                        text = "/ $pageCount",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = colors.textSecondary
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Contenitore verticale
                     val surfaceScale by animateFloatAsState(
                         targetValue = if (isDragging) 1.15f else 1f,
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
@@ -719,40 +683,44 @@ fun HomePageIndicator(
                             }
                         }
                     }
+                }
 
-                    if (!isRight) {
-                        // Badge pagina fluttuante posizionato alla destra dell'indicatore
-                        AnimatedVisibility(
-                            visible = isDragging,
-                            enter = fadeIn(tween(150)) + scaleIn(spring(stiffness = Spring.StiffnessMediumLow)),
-                            exit = fadeOut(tween(150)) + scaleOut(spring(stiffness = Spring.StiffnessMediumLow))
+                // Badge pagina fluttuante posizionato verso l'interno dello schermo durante il drag
+                AnimatedVisibility(
+                    visible = isDragging,
+                    enter = fadeIn(tween(150)) + scaleIn(spring(stiffness = Spring.StiffnessMediumLow)),
+                    exit = fadeOut(tween(150)) + scaleOut(spring(stiffness = Spring.StiffnessMediumLow)),
+                    modifier = Modifier
+                        .align(if (isRight) Alignment.CenterEnd else Alignment.CenterStart)
+                        .padding(
+                            end = if (isRight) sideMargin + 6.dp else 0.dp,
+                            start = if (!isRight) sideMargin + 6.dp else 0.dp
+                        )
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = colors.islandBackground,
+                        border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.6f)),
+                        shadowElevation = 8.dp,
+                        tonalElevation = 4.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = colors.islandBackground,
-                                border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.6f)),
-                                shadowElevation = 8.dp,
-                                tonalElevation = 4.dp
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                ) {
-                                    Text(
-                                        text = "${currentPage + 1}",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = colors.accent
-                                    )
-                                    Text(
-                                        text = "/ $pageCount",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = colors.textSecondary
-                                    )
-                                }
-                            }
+                            Text(
+                                text = "${currentPage + 1}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Black,
+                                color = colors.accent
+                            )
+                            Text(
+                                text = "/ $pageCount",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.textSecondary
+                            )
                         }
                     }
                 }
