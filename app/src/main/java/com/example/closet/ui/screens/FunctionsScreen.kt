@@ -418,7 +418,9 @@ fun FunctionsScreen(
                     TransfersActivityScreen(
                         viewModel = viewModel,
                         onBack = { currentSubScreen = null },
-                        onNavigateToLaundry = { currentSubScreen = FunctionSubScreen.LAUNDRY }
+                        onNavigateToLaundry = { currentSubScreen = FunctionSubScreen.LAUNDRY },
+                        onNavigateToMove = { currentSubScreen = FunctionSubScreen.MOVE },
+                        onNavigateToTrip = { currentSubScreen = FunctionSubScreen.TRIP }
                     )
                 }
                 FunctionSubScreen.TOOLS -> {

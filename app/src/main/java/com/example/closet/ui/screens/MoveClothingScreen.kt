@@ -50,6 +50,24 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import com.example.closet.ui.viewmodel.ClosetViewModel
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle as ComposeTextStyle
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.Schedule
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.Instant
+import java.util.Locale
 import java.time.format.DateTimeFormatter
 
 @Composable
@@ -93,7 +111,13 @@ fun MoveClothingScreen(
     var showSourceMenu by remember { mutableStateOf(false) }
     var showDestMenu by remember { mutableStateOf(false) }
 
+    var isSearchActive by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var filterTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showCustomizeSheet by remember { mutableStateOf(false) }
+    var showTimeWheelPicker by remember { mutableStateOf(false) }
+    var showDurationWheelPicker by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
     var showHistorySheet by remember { mutableStateOf(false) }
     var showExitDialog by remember { mutableStateOf(false) }
 
@@ -107,7 +131,11 @@ fun MoveClothingScreen(
     }
 
     val handleBack: () -> Unit = {
-        if (currentFolder != null) {
+        if (isSearchActive) {
+            isSearchActive = false
+            searchQuery = ""
+            filterTags = emptySet()
+        } else if (currentFolder != null) {
             currentFolder = null
         } else if (selectedQuantities.isNotEmpty()) {
             showExitDialog = true
@@ -128,16 +156,63 @@ fun MoveClothingScreen(
         viewModel.setSuitcaseClosets(sourceCloset, destCloset)
     }
 
-    val availableFoldersInSource = remember(viewModel.closetFolders.toList(), sourceCloset) {
-        viewModel.getFoldersForCloset(sourceCloset)
-    }
-
     val allItemsInSource = remember(viewModel.clothingItems.toList(), sourceCloset) {
         viewModel.clothingItems.filter { it.closetName == sourceCloset }
     }
 
-    val visibleItemsInSource = remember(allItemsInSource, currentFolder) {
-        allItemsInSource.filter { it.folderName == currentFolder }
+    val availableFoldersInSource = remember(viewModel.closetFolders.toList(), sourceCloset, searchQuery, filterTags, isSearchActive) {
+        val folders = viewModel.getFoldersForCloset(sourceCloset)
+        if (isSearchActive) {
+            folders.filter { folder ->
+                val folderItems = allItemsInSource.filter { it.folderName == folder.folderName }
+                val nameMatches = if (searchQuery.isBlank()) true else folder.folderName.contains(searchQuery.trim(), ignoreCase = true)
+                val itemsMatch = folderItems.any { item ->
+                    val qMatch = if (searchQuery.isBlank()) true else {
+                        item.name.contains(searchQuery.trim(), ignoreCase = true) ||
+                        item.tags.any { it.contains(searchQuery.trim(), ignoreCase = true) }
+                    }
+                    val tMatch = if (filterTags.isEmpty()) true else filterTags.all { fTag ->
+                        item.tags.any { it.equals(fTag, ignoreCase = true) }
+                    }
+                    qMatch && tMatch
+                }
+                if (filterTags.isNotEmpty()) {
+                    val tagItemsMatch = folderItems.any { item ->
+                        filterTags.all { fTag -> item.tags.any { it.equals(fTag, ignoreCase = true) } }
+                    }
+                    if (searchQuery.isNotBlank()) (nameMatches || itemsMatch) && tagItemsMatch else tagItemsMatch
+                } else if (searchQuery.isNotBlank()) {
+                    nameMatches || itemsMatch
+                } else {
+                    true
+                }
+            }
+        } else {
+            folders
+        }
+    }
+
+    val visibleItemsInSource = remember(allItemsInSource, currentFolder, searchQuery, filterTags, isSearchActive) {
+        allItemsInSource.filter { item ->
+            val matchFolder = if (isSearchActive) {
+                if (currentFolder != null) item.folderName == currentFolder else true
+            } else {
+                item.folderName == currentFolder
+            }
+            val matchQuery = if (isSearchActive && searchQuery.isNotBlank()) {
+                item.name.contains(searchQuery.trim(), ignoreCase = true) ||
+                (item.folderName?.contains(searchQuery.trim(), ignoreCase = true) == true) ||
+                item.tags.any { it.contains(searchQuery.trim(), ignoreCase = true) }
+            } else {
+                true
+            }
+            val matchTag = if (isSearchActive && filterTags.isNotEmpty()) {
+                filterTags.all { fTag -> item.tags.any { it.equals(fTag, ignoreCase = true) } }
+            } else {
+                true
+            }
+            matchFolder && matchQuery && matchTag
+        }
     }
 
     val totalSelectedPieces = remember(selectedQuantities.toMap()) {
@@ -538,7 +613,7 @@ fun MoveClothingScreen(
 
                         if (visibleItemsInSource.isEmpty() && (currentFolder != null || availableFoldersInSource.isEmpty())) {
                             item(span = { GridItemSpan(2) }) {
-                                EmptyClosetState(isFolder = currentFolder != null)
+                                EmptyClosetState(isFolder = currentFolder != null, isSearch = isSearchActive)
                             }
                         } else {
                             items(visibleItemsInSource, key = { it.id }) { item ->
@@ -600,7 +675,7 @@ fun MoveClothingScreen(
 
                         if (visibleItemsInSource.isEmpty() && (currentFolder != null || availableFoldersInSource.isEmpty())) {
                             item {
-                                EmptyClosetState(isFolder = currentFolder != null)
+                                EmptyClosetState(isFolder = currentFolder != null, isSearch = isSearchActive)
                             }
                         } else {
                             items(visibleItemsInSource, key = { it.id }) { item ->
@@ -659,120 +734,270 @@ fun MoveClothingScreen(
             }
         }
 
-        Surface(
-            shape = CircleShape,
-            color = colors.islandBackground,
-            tonalElevation = 8.dp,
-            shadowElevation = 16.dp,
-            border = BorderStroke(0.5.dp, colors.cardBorder),
+        AnimatedVisibility(
+            visible = !isSearchActive,
+            enter = fadeIn(tween(200)) + slideInVertically(initialOffsetY = { it / 2 }),
+            exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { it / 2 }),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 .padding(bottom = 20.dp)
-                .height(54.dp)
-                .wrapContentWidth()
                 .zIndex(30f)
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                shape = CircleShape,
+                color = colors.islandBackground,
+                tonalElevation = 8.dp,
+                shadowElevation = 16.dp,
+                border = BorderStroke(0.5.dp, colors.cardBorder),
+                modifier = Modifier
+                    .height(54.dp)
+                    .wrapContentWidth()
             ) {
-                TextButton(
-                    onClick = {
-                        if (selectedQuantities.isNotEmpty()) {
-                            showExitDialog = true
-                        } else {
-                            onBack()
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = {
+                            if (selectedQuantities.isNotEmpty()) {
+                                showExitDialog = true
+                            } else {
+                                onBack()
+                            }
                         }
+                    ) {
+                        Text(
+                            text = "Annulla",
+                            color = Color(0xFFE55353),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
-                ) {
-                    Text(
-                        text = "Annulla",
-                        color = Color(0xFFE55353),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
 
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(colors.surfaceSecondary)
-                        .clickable { showCustomizeSheet = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Tune,
-                        contentDescription = "Opzioni",
-                        tint = colors.textPrimary,
-                        modifier = Modifier.size(19.dp)
-                    )
-                }
+                    // Tasto Cerca (a sinistra del pulsante opzioni)
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(if (isSearchActive) screenAccent else colors.surfaceSecondary)
+                            .clickable { isSearchActive = !isSearchActive },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Cerca",
+                            tint = if (isSearchActive) Color.White else colors.textPrimary,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
 
-                if (isLaundryMode) {
                     Box(
                         modifier = Modifier
                             .size(38.dp)
                             .clip(CircleShape)
                             .background(colors.surfaceSecondary)
-                            .clickable { showHistorySheet = true },
+                            .clickable { showCustomizeSheet = true },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.History,
-                            contentDescription = "Cronologia Spostamenti",
-                            tint = screenAccent,
-                            modifier = Modifier.size(20.dp)
+                            imageVector = Icons.Outlined.Tune,
+                            contentDescription = "Opzioni",
+                            tint = colors.textPrimary,
+                            modifier = Modifier.size(19.dp)
                         )
                     }
-                }
 
-                val canMove = totalSelectedPieces > 0 && sourceCloset != destCloset
-                Button(
-                    onClick = {
-                        if (isLaundryMode || viewModel.laundryDurationEnabled) {
-                            viewModel.startLaundryTransfer(
-                                itemSelections = selectedQuantities.toMap(),
-                                fromCloset = sourceCloset,
-                                toCloset = destCloset,
-                                isLaundry = isLaundryMode
-                            )
-                        } else {
-                            viewModel.transferSuitcaseItems(
-                                itemSelections = selectedQuantities.toMap(),
-                                fromCloset = sourceCloset,
-                                toCloset = destCloset
+                    if (isLaundryMode) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(colors.surfaceSecondary)
+                                .clickable { showHistorySheet = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.History,
+                                contentDescription = "Cronologia Spostamenti",
+                                tint = screenAccent,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
-                        selectedQuantities.clear()
-                        onBack()
-                    },
-                    enabled = canMove,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = screenAccent,
-                        disabledContainerColor = screenAccent.copy(alpha = 0.35f)
-                    ),
-                    shape = CircleShape,
-                    modifier = Modifier.height(40.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    }
+
+                    val canMove = totalSelectedPieces > 0 && sourceCloset != destCloset
+                    Button(
+                        onClick = {
+                            if (isLaundryMode || viewModel.laundryDurationEnabled) {
+                                viewModel.startLaundryTransfer(
+                                    itemSelections = selectedQuantities.toMap(),
+                                    fromCloset = sourceCloset,
+                                    toCloset = destCloset,
+                                    isLaundry = isLaundryMode
+                                )
+                            } else {
+                                viewModel.transferSuitcaseItems(
+                                    itemSelections = selectedQuantities.toMap(),
+                                    fromCloset = sourceCloset,
+                                    toCloset = destCloset
+                                )
+                            }
+                            selectedQuantities.clear()
+                            onBack()
+                        },
+                        enabled = canMove,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = screenAccent,
+                            disabledContainerColor = screenAccent.copy(alpha = 0.35f)
+                        ),
+                        shape = CircleShape,
+                        modifier = Modifier.height(40.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = null,
-                            tint = if (canMove) Color.White else Color.White.copy(alpha = 0.6f),
-                            modifier = Modifier.size(16.dp)
-                        )
                         Text(
                             text = "Sposta",
                             color = if (canMove) Color.White else Color.White.copy(alpha = 0.6f),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+                }
+            }
+        }
+
+        // Barra di Ricerca (come in armadio)
+        AnimatedVisibility(
+            visible = isSearchActive,
+            enter = fadeIn(animationSpec = tween(300)) + slideInVertically(
+                initialOffsetY = { it / 2 },
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+            ),
+            exit = fadeOut(animationSpec = tween(240)) + slideOutVertically(
+                targetOffsetY = { it / 2 },
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+            ),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .imePadding()
+                .padding(bottom = 24.dp, start = 20.dp, end = 20.dp)
+                .zIndex(35f)
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (viewModel.availableTags.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        viewModel.availableTags.forEach { tag ->
+                            val isSel = filterTags.contains(tag)
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isSel) screenAccent else colors.islandBackground,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSel) screenAccent else colors.cardBorder
+                                ),
+                                tonalElevation = 6.dp,
+                                shadowElevation = 8.dp,
+                                modifier = Modifier.clickable {
+                                    filterTags = if (isSel) {
+                                        filterTags - tag
+                                    } else {
+                                        filterTags + tag
+                                    }
+                                }
+                            ) {
+                                Text(
+                                    text = tag,
+                                    color = if (isSel) Color.White else colors.textPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Surface(
+                    shape = CircleShape,
+                    color = colors.islandBackground,
+                    border = BorderStroke(1.dp, screenAccent.copy(alpha = 0.5f)),
+                    tonalElevation = 8.dp,
+                    shadowElevation = 16.dp,
+                    modifier = Modifier
+                        .height(54.dp)
+                        .fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Cerca",
+                            tint = screenAccent,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = "Cerca nei capi...",
+                                    color = colors.textSecondary,
+                                    fontSize = 13.sp
+                                )
+                            }
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                singleLine = true,
+                                textStyle = ComposeTextStyle(
+                                    color = colors.textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                cursorBrush = SolidColor(screenAccent),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(
+                                onClick = { searchQuery = "" },
+                                modifier = Modifier.size(26.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Cancella",
+                                    tint = colors.textSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = {
+                                isSearchActive = false
+                                searchQuery = ""
+                                filterTags = emptySet()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = screenAccent),
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(horizontal = 14.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Text(
+                                text = "Fine",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -862,154 +1087,148 @@ fun MoveClothingScreen(
             onDismissRequest = { showHistorySheet = false },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            Box(
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = colors.dialogBackground,
+                border = BorderStroke(1.dp, colors.cardBorder),
+                tonalElevation = 8.dp,
+                shadowElevation = 24.dp,
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 24.dp),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth(0.92f)
+                    .heightIn(max = 620.dp)
+                    .padding(vertical = 16.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    color = colors.dialogBackground,
-                    border = BorderStroke(0.5.dp, colors.cardBorder),
-                    tonalElevation = 8.dp,
-                    shadowElevation = 24.dp,
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .wrapContentHeight()
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Cronologia Spostamenti",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.textPrimary
-                            )
-                            IconButton(onClick = { showHistorySheet = false }) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Chiudi",
-                                    tint = colors.textSecondary
-                                )
-                            }
-                        }
-
                         Text(
-                            text = "Tocca uno spostamento per impostare in automatico la partenza inversa e pre-selezionare i capi trasferiti.",
-                            fontSize = 12.sp,
-                            color = colors.textSecondary
+                            text = "Cronologia Spostamenti",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
                         )
+                        IconButton(onClick = { showHistorySheet = false }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Chiudi",
+                                tint = colors.textSecondary
+                            )
+                        }
+                    }
 
-                        if (viewModel.transferHistory.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 24.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("Nessun trasferimento precedente registrato.", color = colors.textMuted, fontSize = 13.sp)
-                            }
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 320.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                items(viewModel.transferHistory.take(5), key = { it.id }) { record ->
-                                    Surface(
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = colors.surfaceSecondary,
-                                        border = BorderStroke(0.5.dp, colors.cardBorder),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                sourceCloset = record.toCloset
-                                                destCloset = record.fromCloset
-                                                selectedQuantities.clear()
+                    Text(
+                        text = "Tocca uno spostamento per impostare in automatico la partenza inversa e pre-selezionare i capi trasferiti.",
+                        fontSize = 12.sp,
+                        color = colors.textSecondary
+                    )
 
-                                                record.itemsMoved.forEach { detail ->
-                                                    val found = viewModel.clothingItems.firstOrNull {
-                                                        (it.id == detail.itemId || it.name.equals(detail.itemName, ignoreCase = true)) &&
-                                                                it.closetName == record.toCloset
-                                                    }
-                                                    if (found != null) {
-                                                        selectedQuantities[found.id] = detail.quantity.coerceAtMost(found.quantity)
-                                                    }
+                    if (viewModel.transferHistory.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Nessun trasferimento precedente registrato.", color = colors.textMuted, fontSize = 13.sp)
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 320.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(viewModel.transferHistory.take(5), key = { it.id }) { record ->
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = colors.surfaceSecondary,
+                                    border = BorderStroke(0.5.dp, colors.cardBorder),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            sourceCloset = record.toCloset
+                                            destCloset = record.fromCloset
+                                            selectedQuantities.clear()
+
+                                            record.itemsMoved.forEach { detail ->
+                                                val found = viewModel.clothingItems.firstOrNull {
+                                                    (it.id == detail.itemId || it.name.equals(detail.itemName, ignoreCase = true)) &&
+                                                            it.closetName == record.toCloset
                                                 }
-
-                                                currentFolder = null
-                                                showHistorySheet = false
+                                                if (found != null) {
+                                                    selectedQuantities[found.id] = detail.quantity.coerceAtMost(found.quantity)
+                                                }
                                             }
+
+                                            currentFolder = null
+                                            showHistorySheet = false
+                                        }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Column(
-                                            modifier = Modifier.padding(14.dp),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = record.timestamp.format(DateTimeFormatter.ofPattern("dd/MM/yyyy 'ore' HH:mm")),
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = screenAccent
-                                                )
-                                                Text(
-                                                    text = "Tocca per invertire",
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = screenAccent
-                                                )
-                                            }
-
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Text(record.fromCloset, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = screenAccent, modifier = Modifier.size(14.dp))
-                                                Text(record.toCloset, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                            }
-
-                                            val summaryText = record.itemsMoved.joinToString(", ") {
-                                                if (it.quantity > 1) "${it.quantity}x ${it.itemName}" else it.itemName
-                                            }
                                             Text(
-                                                text = summaryText,
-                                                color = colors.textSecondary,
-                                                fontSize = 11.5.sp,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis
+                                                text = record.timestamp.format(DateTimeFormatter.ofPattern("dd/MM/yyyy 'ore' HH:mm")),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = screenAccent
+                                            )
+                                            Text(
+                                                text = "Tocca per invertire",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = screenAccent
                                             )
                                         }
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(record.fromCloset, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = screenAccent, modifier = Modifier.size(14.dp))
+                                            Text(record.toCloset, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        }
+
+                                        val summaryText = record.itemsMoved.joinToString(", ") {
+                                            if (it.quantity > 1) "${it.quantity}x ${it.itemName}" else it.itemName
+                                        }
+                                        Text(
+                                            text = summaryText,
+                                            color = colors.textSecondary,
+                                            fontSize = 11.5.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
                                 }
                             }
                         }
+                    }
 
-                        Button(
-                            onClick = { showHistorySheet = false },
-                            colors = ButtonDefaults.buttonColors(containerColor = screenAccent),
-                            shape = CircleShape,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(44.dp)
-                        ) {
-                            Text("Chiudi", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
+                    Button(
+                        onClick = { showHistorySheet = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = screenAccent),
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(46.dp)
+                    ) {
+                        Text("Chiudi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
             }
@@ -1021,229 +1240,329 @@ fun MoveClothingScreen(
             onDismissRequest = { showCustomizeSheet = false },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            Box(
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = colors.dialogBackground,
+                border = BorderStroke(1.dp, colors.cardBorder),
+                tonalElevation = 8.dp,
+                shadowElevation = 24.dp,
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 24.dp),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth(0.92f)
+                    .heightIn(max = 640.dp)
+                    .padding(vertical = 16.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    color = colors.dialogBackground,
-                    border = BorderStroke(0.5.dp, colors.cardBorder),
-                    tonalElevation = 8.dp,
-                    shadowElevation = 24.dp,
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .wrapContentHeight()
+                        .padding(20.dp)
                 ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = if (isLaundryMode) "Personalizzazione Panni" else "Personalizzazione Spostamento",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                        IconButton(onClick = { showCustomizeSheet = false }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Chiudi",
+                                tint = colors.textSecondary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp)
+                            .weight(1f, fill = false)
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
+                        // Switch Imposta Durata Trasferimento (senza descrizione)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = if (isLaundryMode) "Personalizzazione Panni" else "Personalizzazione Spostamento",
-                                fontSize = 18.sp,
+                                text = "Imposta Durata Trasferimento",
+                                fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = colors.textPrimary
+                                color = colors.textPrimary,
+                                modifier = Modifier.weight(1f)
                             )
-                            IconButton(onClick = { showCustomizeSheet = false }) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Chiudi",
-                                    tint = colors.textSecondary
-                                )
-                            }
+                            Switch(
+                                checked = viewModel.laundryDurationEnabled,
+                                onCheckedChange = { viewModel.laundryDurationEnabled = it },
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = screenAccent)
+                            )
                         }
-                    }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Imposta Durata Trasferimento", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-                        Text("I capi rimarranno in transito per il tempo prefissato", fontSize = 11.sp, color = colors.textSecondary)
-                    }
-                    Switch(
-                        checked = viewModel.laundryDurationEnabled,
-                        onCheckedChange = { viewModel.laundryDurationEnabled = it },
-                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = screenAccent)
-                    )
-                }
-
-                if (viewModel.laundryDurationEnabled) {
-                    Surface(
-                        shape = RoundedCornerShape(18.dp),
-                        color = colors.surfaceSecondary,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        if (viewModel.laundryDurationEnabled) {
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = colors.surfaceSecondary,
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Button(
-                                    onClick = { viewModel.laundryUseExactEndTime = false },
-                                    colors = ButtonDefaults.buttonColors(containerColor = if (!viewModel.laundryUseExactEndTime) screenAccent else Color.Transparent),
-                                    shape = CircleShape,
-                                    modifier = Modifier.weight(1f)
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Text("Per Ore/Minuti", fontSize = 11.sp, color = if (!viewModel.laundryUseExactEndTime) Color.White else colors.textPrimary)
-                                }
-                                Button(
-                                    onClick = { viewModel.laundryUseExactEndTime = true },
-                                    colors = ButtonDefaults.buttonColors(containerColor = if (viewModel.laundryUseExactEndTime) screenAccent else Color.Transparent),
-                                    shape = CircleShape,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Giorno e Ora di Fine", fontSize = 11.sp, color = if (viewModel.laundryUseExactEndTime) Color.White else colors.textPrimary)
-                                }
-                            }
-
-                            if (!viewModel.laundryUseExactEndTime) {
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Text("Ore:", fontSize = 13.sp, color = colors.textPrimary)
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            IconButton(onClick = { if (viewModel.laundryDurationHours > 0) viewModel.laundryDurationHours-- }) {
-                                                Text("-", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-                                            }
-                                            Text("${viewModel.laundryDurationHours} h", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = screenAccent)
-                                            IconButton(onClick = { viewModel.laundryDurationHours++ }) {
-                                                Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-                                            }
+                                        Button(
+                                            onClick = { viewModel.laundryUseExactEndTime = false },
+                                            colors = ButtonDefaults.buttonColors(containerColor = if (!viewModel.laundryUseExactEndTime) screenAccent else Color.Transparent),
+                                            shape = CircleShape,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("Per Ore/Minuti", fontSize = 11.sp, color = if (!viewModel.laundryUseExactEndTime) Color.White else colors.textPrimary)
+                                        }
+                                        Button(
+                                            onClick = { viewModel.laundryUseExactEndTime = true },
+                                            colors = ButtonDefaults.buttonColors(containerColor = if (viewModel.laundryUseExactEndTime) screenAccent else Color.Transparent),
+                                            shape = CircleShape,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("Giorno e Ora di Fine", fontSize = 11.sp, color = if (viewModel.laundryUseExactEndTime) Color.White else colors.textPrimary)
                                         }
                                     }
 
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("Minuti:", fontSize = 13.sp, color = colors.textPrimary)
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            IconButton(onClick = {
-                                                if (viewModel.laundryDurationMinutes >= 5) viewModel.laundryDurationMinutes -= 5
-                                            }) {
-                                                Text("-", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-                                            }
-                                            Text("${viewModel.laundryDurationMinutes} min", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = screenAccent)
-                                            IconButton(onClick = {
-                                                if (viewModel.laundryDurationMinutes <= 50) viewModel.laundryDurationMinutes += 5
-                                            }) {
-                                                Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
+                                    if (!viewModel.laundryUseExactEndTime) {
+                                        // Selettore Durata con wheel picker
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = colors.dialogBackground,
+                                            border = BorderStroke(0.5.dp, colors.cardBorder),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { showDurationWheelPicker = true }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.Schedule,
+                                                        contentDescription = null,
+                                                        tint = screenAccent,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Text(
+                                                        text = "Durata",
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = colors.textPrimary
+                                                    )
+                                                }
+                                                val durationDisplay = if (viewModel.laundryDurationMinutes > 0) {
+                                                    "${viewModel.laundryDurationHours} h ${viewModel.laundryDurationMinutes} min"
+                                                } else {
+                                                    "${viewModel.laundryDurationHours} h"
+                                                }
+                                                Text(
+                                                    text = durationDisplay,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = screenAccent
+                                                )
                                             }
                                         }
-                                    }
-                                }
-                            } else {
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("Giorno:", fontSize = 13.sp, color = colors.textPrimary)
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            IconButton(onClick = {
-                                                viewModel.laundryExactDate = viewModel.laundryExactDate.minusDays(1)
-                                            }) {
-                                                Text("-", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
+                                    } else {
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            // Selettore Giorno
+                                            Surface(
+                                                shape = RoundedCornerShape(14.dp),
+                                                color = colors.dialogBackground,
+                                                border = BorderStroke(0.5.dp, colors.cardBorder),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { showDatePicker = true }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.CalendarToday,
+                                                            contentDescription = null,
+                                                            tint = screenAccent,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Text(
+                                                            text = "Giorno di Fine",
+                                                            fontSize = 13.sp,
+                                                            fontWeight = FontWeight.Medium,
+                                                            color = colors.textPrimary
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = viewModel.laundryExactDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = screenAccent
+                                                    )
+                                                }
                                             }
-                                            Text(
-                                                text = viewModel.laundryExactDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = screenAccent
-                                            )
-                                            IconButton(onClick = {
-                                                viewModel.laundryExactDate = viewModel.laundryExactDate.plusDays(1)
-                                            }) {
-                                                Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-                                            }
-                                        }
-                                    }
 
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("Ora di Fine:", fontSize = 13.sp, color = colors.textPrimary)
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            IconButton(onClick = {
-                                                viewModel.laundryExactHour = (viewModel.laundryExactHour - 1 + 24) % 24
-                                            }) {
-                                                Text("-", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-                                            }
-                                            Text(
-                                                text = String.format("%02d:%02d", viewModel.laundryExactHour, viewModel.laundryExactMinute),
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = screenAccent
-                                            )
-                                            IconButton(onClick = {
-                                                viewModel.laundryExactHour = (viewModel.laundryExactHour + 1) % 24
-                                            }) {
-                                                Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
+                                            // Selettore Ora di Fine con wheel picker a scorrimento
+                                            Surface(
+                                                shape = RoundedCornerShape(14.dp),
+                                                color = colors.dialogBackground,
+                                                border = BorderStroke(0.5.dp, colors.cardBorder),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { showTimeWheelPicker = true }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.Schedule,
+                                                            contentDescription = null,
+                                                            tint = screenAccent,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Text(
+                                                            text = "Ora di Fine",
+                                                            fontSize = 13.sp,
+                                                            fontWeight = FontWeight.Medium,
+                                                            color = colors.textPrimary
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = String.format(Locale.ROOT, "%02d:%02d", viewModel.laundryExactHour, viewModel.laundryExactMinute),
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = screenAccent
+                                                    )
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
+
+                        // Switch Visualizza capi nell'armadio di arrivo (senza descrizione)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Visualizza capi nell'armadio di arrivo",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Switch(
+                                checked = viewModel.laundryShowDimmedInDestination,
+                                onCheckedChange = { viewModel.laundryShowDimmedInDestination = it },
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = screenAccent)
+                            )
+                        }
                     }
-                }
 
-                HorizontalDivider(color = colors.cardBorder)
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Visualizza capi nell'armadio di arrivo", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-                        Text("I capi in viaggio saranno visibili a destinazione ma oscurati", fontSize = 11.sp, color = colors.textSecondary)
+                    Button(
+                        onClick = { showCustomizeSheet = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = screenAccent),
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(46.dp)
+                    ) {
+                        Text("Salva impostazioni", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
-                    Switch(
-                        checked = viewModel.laundryShowDimmedInDestination,
-                        onCheckedChange = { viewModel.laundryShowDimmedInDestination = it },
-                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = screenAccent)
-                    )
-                }
-
-                Button(
-                    onClick = { showCustomizeSheet = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = screenAccent),
-                    shape = CircleShape,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
-                ) {
-                    Text("Salva impostazioni", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }
     }
-}
+
+    if (showDurationWheelPicker) {
+        SamsungTimeWheelPickerDialog(
+            initialTime = LocalTime.of(viewModel.laundryDurationHours.coerceIn(0, 23), viewModel.laundryDurationMinutes.coerceIn(0, 59)),
+            title = "Imposta durata",
+            onDismiss = { showDurationWheelPicker = false },
+            onConfirm = { time ->
+                viewModel.laundryDurationHours = time.hour
+                viewModel.laundryDurationMinutes = time.minute
+                showDurationWheelPicker = false
+            }
+        )
+    }
+
+    if (showTimeWheelPicker) {
+        SamsungTimeWheelPickerDialog(
+            initialTime = LocalTime.of(viewModel.laundryExactHour.coerceIn(0, 23), viewModel.laundryExactMinute.coerceIn(0, 59)),
+            title = "Imposta orario",
+            onDismiss = { showTimeWheelPicker = false },
+            onConfirm = { time ->
+                viewModel.laundryExactHour = time.hour
+                viewModel.laundryExactMinute = time.minute
+                showTimeWheelPicker = false
+            }
+        )
+    }
+
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = viewModel.laundryExactDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        viewModel.laundryExactDate = Instant.ofEpochMilli(millis)
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalDate()
+                    }
+                    showDatePicker = false
+                }) { Text("OK", color = screenAccent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Annulla", color = colors.textSecondary) }
+            },
+            colors = DatePickerDefaults.colors(containerColor = colors.dialogBackground)
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
 }
 
 // --- CARD PER LA SELEZIONE DEI CAPI NELLA VALIGIA / SPOSTAMENTO / PANNI ---

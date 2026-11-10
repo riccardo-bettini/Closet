@@ -1324,6 +1324,7 @@ fun ReminderEditDialog(
 @Composable
 fun SamsungTimeWheelPickerDialog(
     initialTime: LocalTime,
+    title: String = "Imposta orario",
     onDismiss: () -> Unit,
     onConfirm: (LocalTime) -> Unit
 ) {
@@ -1354,7 +1355,7 @@ fun SamsungTimeWheelPickerDialog(
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 Text(
-                    text = "Imposta orario",
+                    text = title,
                     color = colors.textPrimary,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold

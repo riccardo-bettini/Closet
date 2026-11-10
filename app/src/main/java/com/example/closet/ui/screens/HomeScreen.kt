@@ -1517,7 +1517,9 @@ fun HomeScreen(
                                 IslandTabType.TRANSFERS_ACTIVITY -> TransfersActivityScreen(
                                     viewModel = viewModel,
                                     onBack = {},
-                                    onNavigateToLaundry = { navigateToTabOrFunction(IslandTabType.LAUNDRY) }
+                                    onNavigateToLaundry = { navigateToTabOrFunction(IslandTabType.LAUNDRY) },
+                                    onNavigateToMove = { navigateToTabOrFunction(IslandTabType.MOVE) },
+                                    onNavigateToTrip = { navigateToTabOrFunction(IslandTabType.TRIP) }
                                 )
                                 IslandTabType.TOOLS -> ToolsScreen(viewModel = viewModel, onBack = {})
                                 else -> {}

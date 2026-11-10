@@ -1201,6 +1201,16 @@ class ClosetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun clearTransferHistory() {
+        transferHistory.clear()
+        saveTransferHistory()
+    }
+
+    fun removeTransferHistoryItem(id: String) {
+        transferHistory.removeAll { it.id == id }
+        saveTransferHistory()
+    }
+
     private fun loadTransferHistory() {
         transferHistory.clear()
         val raw = prefs.getString("transfer_history_records_v2", null) ?: return

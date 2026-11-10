@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Work
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -46,6 +48,26 @@ import androidx.compose.ui.zIndex
 import com.example.closet.ui.viewmodel.ClosetViewModel
 import com.example.closet.ui.viewmodel.TripEndAction
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle as ComposeTextStyle
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.Schedule
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.Instant
+import java.util.Locale
 import java.time.format.DateTimeFormatter
 
 @Composable
@@ -60,7 +82,14 @@ fun TripScreen(
 
     var selectedClosetFilter by remember { mutableStateOf<String?>("Tutti gli armadi") }
     var viewMode by remember { mutableStateOf(ViewMode.GRID) }
+    var isSearchActive by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var filterTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showCustomizeSheet by remember { mutableStateOf(false) }
+    var showTripTimeWheelPicker by remember { mutableStateOf(false) }
+    var showTripDurationWheelPicker by remember { mutableStateOf(false) }
+    var showTripDatePicker by remember { mutableStateOf(false) }
+    var showTripLaundryDurationWheelPicker by remember { mutableStateOf(false) }
     var showExitDialog by remember { mutableStateOf(false) }
     var showCancelTripConfirmDialog by remember { mutableStateOf(false) }
 
@@ -72,8 +101,12 @@ fun TripScreen(
         }
     }
 
-    BackHandler(enabled = true) {
-        if (activeTrip != null) {
+    val handleBack: () -> Unit = {
+        if (isSearchActive) {
+            isSearchActive = false
+            searchQuery = ""
+            filterTags = emptySet()
+        } else if (activeTrip != null) {
             onBack()
         } else if (selectedQuantities.isNotEmpty()) {
             showExitDialog = true
@@ -82,11 +115,31 @@ fun TripScreen(
         }
     }
 
-    val allAvailableItems = remember(viewModel.clothingItems.toList(), selectedClosetFilter) {
-        if (selectedClosetFilter == null || selectedClosetFilter == "Tutti gli armadi") {
+    BackHandler(enabled = true) {
+        handleBack()
+    }
+
+    val allAvailableItems = remember(viewModel.clothingItems.toList(), selectedClosetFilter, searchQuery, filterTags, isSearchActive) {
+        val baseItems = if (selectedClosetFilter == null || selectedClosetFilter == "Tutti gli armadi") {
             viewModel.clothingItems.toList()
         } else {
             viewModel.clothingItems.filter { it.closetName == selectedClosetFilter }
+        }
+
+        if (isSearchActive) {
+            baseItems.filter { item ->
+                val matchQuery = if (searchQuery.isBlank()) true else {
+                    item.name.contains(searchQuery.trim(), ignoreCase = true) ||
+                    (item.folderName?.contains(searchQuery.trim(), ignoreCase = true) == true) ||
+                    item.tags.any { it.contains(searchQuery.trim(), ignoreCase = true) }
+                }
+                val matchTag = if (filterTags.isEmpty()) true else filterTags.all { fTag ->
+                    item.tags.any { it.equals(fTag, ignoreCase = true) }
+                }
+                matchQuery && matchTag
+            }
+        } else {
+            baseItems
         }
     }
 
@@ -123,15 +176,7 @@ fun TripScreen(
             .fillMaxSize()
             .background(Color.Transparent)
     ) {
-        val handleBack: () -> Unit = {
-            if (activeTrip != null) {
-                onBack()
-            } else if (selectedQuantities.isNotEmpty()) {
-                showExitDialog = true
-            } else {
-                onBack()
-            }
-        }
+
 
         Column(
             modifier = Modifier
@@ -423,7 +468,12 @@ fun TripScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            items(allAvailableItems, key = { it.id }) { item ->
+                            if (allAvailableItems.isEmpty()) {
+                                item(span = { GridItemSpan(2) }) {
+                                    EmptyClosetState(isFolder = false, isSearch = isSearchActive)
+                                }
+                            } else {
+                                items(allAvailableItems, key = { it.id }) { item ->
                                 val selectedQty = selectedQuantities[item.id] ?: 0
 
                                 SuitcaseClothingGridCard(
@@ -453,6 +503,7 @@ fun TripScreen(
                                     }
                                 )
                             }
+                            }
                         }
                     } else {
                         LazyColumn(
@@ -461,7 +512,12 @@ fun TripScreen(
                             contentPadding = PaddingValues(top = 8.dp, bottom = 90.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            items(allAvailableItems, key = { it.id }) { item ->
+                            if (allAvailableItems.isEmpty()) {
+                                item {
+                                    EmptyClosetState(isFolder = false, isSearch = isSearchActive)
+                                }
+                            } else {
+                                items(allAvailableItems, key = { it.id }) { item ->
                                 val selectedQty = selectedQuantities[item.id] ?: 0
 
                                 SuitcaseClothingListCard(
@@ -491,6 +547,7 @@ fun TripScreen(
                                     }
                                 )
                             }
+                            }
                         }
                     }
 
@@ -517,93 +574,255 @@ fun TripScreen(
             }
         }
 
-        Surface(
-            shape = CircleShape,
-            color = colors.islandBackground,
-            tonalElevation = 8.dp,
-            shadowElevation = 16.dp,
-            border = BorderStroke(0.5.dp, colors.cardBorder),
+        AnimatedVisibility(
+            visible = !isSearchActive,
+            enter = fadeIn(tween(200)) + slideInVertically(initialOffsetY = { it / 2 }),
+            exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { it / 2 }),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 .padding(bottom = 20.dp)
-                .height(54.dp)
-                .wrapContentWidth()
                 .zIndex(30f)
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                shape = CircleShape,
+                color = colors.islandBackground,
+                tonalElevation = 8.dp,
+                shadowElevation = 16.dp,
+                border = BorderStroke(0.5.dp, colors.cardBorder),
+                modifier = Modifier
+                    .height(54.dp)
+                    .wrapContentWidth()
             ) {
-                if (activeTrip != null) {
-                    TextButton(onClick = { showCancelTripConfirmDialog = true }) {
-                        Text("Annulla Viaggio", color = Color(0xFFE55353), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (activeTrip != null) {
+                        TextButton(onClick = { showCancelTripConfirmDialog = true }) {
+                            Text("Annulla Viaggio", color = Color(0xFFE55353), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
 
-                    Button(
-                        onClick = { viewModel.finishTrip(activeTrip) },
-                        colors = ButtonDefaults.buttonColors(containerColor = tripAccent),
-                        shape = CircleShape,
-                        modifier = Modifier.height(40.dp)
-                    ) {
-                        Text("Termina Viaggio", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                } else {
-                    TextButton(
-                        onClick = {
-                            if (selectedQuantities.isNotEmpty()) {
-                                showExitDialog = true
-                            } else {
+                        Button(
+                            onClick = { viewModel.finishTrip(activeTrip) },
+                            colors = ButtonDefaults.buttonColors(containerColor = tripAccent),
+                            shape = CircleShape,
+                            modifier = Modifier.height(40.dp)
+                        ) {
+                            Text("Termina Viaggio", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        TextButton(
+                            onClick = {
+                                if (selectedQuantities.isNotEmpty()) {
+                                    showExitDialog = true
+                                } else {
+                                    onBack()
+                                }
+                            }
+                        ) {
+                            Text(
+                                text = "Annulla",
+                                color = Color(0xFFE55353),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        // Tasto Cerca (a sinistra del pulsante opzioni)
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(if (isSearchActive) tripAccent else colors.surfaceSecondary)
+                                .clickable { isSearchActive = !isSearchActive },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Cerca",
+                                tint = if (isSearchActive) Color.White else colors.textPrimary,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+
+                        // Pulsante Opzioni con icona Icons.Outlined.Tune
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(colors.surfaceSecondary)
+                                .clickable { showCustomizeSheet = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Tune,
+                                contentDescription = "Personalizza Viaggio",
+                                tint = colors.textPrimary,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+
+                        val canStart = totalSelectedPieces > 0
+                        Button(
+                            onClick = {
+                                viewModel.startTrip(selectedQuantities.toMap())
+                                selectedQuantities.clear()
                                 onBack()
+                            },
+                            enabled = canStart,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = tripAccent,
+                                disabledContainerColor = tripAccent.copy(alpha = 0.35f)
+                            ),
+                            shape = CircleShape,
+                            modifier = Modifier.height(40.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Outlined.Work, contentDescription = null, tint = if (canStart) Color.White else Color.White.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+                                Text("Parti", color = if (canStart) Color.White else Color.White.copy(alpha = 0.6f), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
-                    ) {
-                        Text(
-                            text = "Annulla",
-                            color = Color(0xFFE55353),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
                     }
+                }
+            }
+        }
 
-                    Box(
+        // Barra di Ricerca (come in armadio)
+        AnimatedVisibility(
+            visible = isSearchActive,
+            enter = fadeIn(animationSpec = tween(300)) + slideInVertically(
+                initialOffsetY = { it / 2 },
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+            ),
+            exit = fadeOut(animationSpec = tween(240)) + slideOutVertically(
+                targetOffsetY = { it / 2 },
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+            ),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .imePadding()
+                .padding(bottom = 24.dp, start = 20.dp, end = 20.dp)
+                .zIndex(35f)
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (viewModel.availableTags.isNotEmpty()) {
+                    Row(
                         modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(colors.surfaceSecondary)
-                            .clickable { showCustomizeSheet = true },
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        viewModel.availableTags.forEach { tag ->
+                            val isSel = filterTags.contains(tag)
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isSel) tripAccent else colors.islandBackground,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSel) tripAccent else colors.cardBorder
+                                ),
+                                tonalElevation = 6.dp,
+                                shadowElevation = 8.dp,
+                                modifier = Modifier.clickable {
+                                    filterTags = if (isSel) {
+                                        filterTags - tag
+                                    } else {
+                                        filterTags + tag
+                                    }
+                                }
+                            ) {
+                                Text(
+                                    text = tag,
+                                    color = if (isSel) Color.White else colors.textPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Surface(
+                    shape = CircleShape,
+                    color = colors.islandBackground,
+                    border = BorderStroke(1.dp, tripAccent.copy(alpha = 0.5f)),
+                    tonalElevation = 8.dp,
+                    shadowElevation = 16.dp,
+                    modifier = Modifier
+                        .height(54.dp)
+                        .fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.Settings,
-                            contentDescription = "Personalizza Viaggio",
-                            tint = colors.textPrimary,
-                            modifier = Modifier.size(19.dp)
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Cerca",
+                            tint = tripAccent,
+                            modifier = Modifier.size(20.dp)
                         )
-                    }
-
-                    val canStart = totalSelectedPieces > 0
-                    Button(
-                        onClick = {
-                            viewModel.startTrip(selectedQuantities.toMap())
-                            selectedQuantities.clear()
-                            onBack()
-                        },
-                        enabled = canStart,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = tripAccent,
-                            disabledContainerColor = tripAccent.copy(alpha = 0.35f)
-                        ),
-                        shape = CircleShape,
-                        modifier = Modifier.height(40.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = "Cerca nei capi...",
+                                    color = colors.textSecondary,
+                                    fontSize = 13.sp
+                                )
+                            }
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                singleLine = true,
+                                textStyle = ComposeTextStyle(
+                                    color = colors.textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                cursorBrush = SolidColor(tripAccent),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(
+                                onClick = { searchQuery = "" },
+                                modifier = Modifier.size(26.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Cancella",
+                                    tint = colors.textSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = {
+                                isSearchActive = false
+                                searchQuery = ""
+                                filterTags = emptySet()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = tripAccent),
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(horizontal = 14.dp),
+                            modifier = Modifier.height(36.dp)
                         ) {
-                            Icon(Icons.Outlined.Work, contentDescription = null, tint = if (canStart) Color.White else Color.White.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
-                            Text("Parti", color = if (canStart) Color.White else Color.White.copy(alpha = 0.6f), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = "Fine",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -702,212 +921,357 @@ fun TripScreen(
             onDismissRequest = { showCustomizeSheet = false },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            Box(
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = colors.dialogBackground,
+                border = BorderStroke(1.dp, colors.cardBorder),
+                tonalElevation = 8.dp,
+                shadowElevation = 24.dp,
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 24.dp),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth(0.92f)
+                    .heightIn(max = 640.dp)
+                    .padding(vertical = 16.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    color = colors.dialogBackground,
-                    border = BorderStroke(0.5.dp, colors.cardBorder),
-                    tonalElevation = 8.dp,
-                    shadowElevation = 24.dp,
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .wrapContentHeight()
+                        .padding(20.dp)
                 ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Personalizzazione Viaggio",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                        IconButton(onClick = { showCustomizeSheet = false }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Chiudi",
+                                tint = colors.textSecondary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp)
+                            .weight(1f, fill = false)
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
+                        // Switch Imposta Durata Viaggio (senza descrizione)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "Personalizzazione Viaggio",
-                                fontSize = 18.sp,
+                                text = "Imposta Durata Viaggio",
+                                fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = colors.textPrimary
+                                color = colors.textPrimary,
+                                modifier = Modifier.weight(1f)
                             )
-                            IconButton(onClick = { showCustomizeSheet = false }) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Chiudi",
-                                    tint = colors.textSecondary
-                                )
+                            Switch(
+                                checked = viewModel.tripDurationEnabled,
+                                onCheckedChange = { viewModel.tripDurationEnabled = it },
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = tripAccent)
+                            )
+                        }
+
+                        if (viewModel.tripDurationEnabled) {
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = colors.surfaceSecondary,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            onClick = { viewModel.tripUseExactEndTime = false },
+                                            colors = ButtonDefaults.buttonColors(containerColor = if (!viewModel.tripUseExactEndTime) tripAccent else Color.Transparent),
+                                            shape = CircleShape,
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("Per Ore", fontSize = 11.sp, color = if (!viewModel.tripUseExactEndTime) Color.White else colors.textPrimary) }
+
+                                        Button(
+                                            onClick = { viewModel.tripUseExactEndTime = true },
+                                            colors = ButtonDefaults.buttonColors(containerColor = if (viewModel.tripUseExactEndTime) tripAccent else Color.Transparent),
+                                            shape = CircleShape,
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("Giorno e Ora", fontSize = 11.sp, color = if (viewModel.tripUseExactEndTime) Color.White else colors.textPrimary) }
+                                    }
+
+                                    if (!viewModel.tripUseExactEndTime) {
+                                        // Selettore Durata (Ore) con wheel picker a scorrimento
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = colors.dialogBackground,
+                                            border = BorderStroke(0.5.dp, colors.cardBorder),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { showTripDurationWheelPicker = true }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    Icon(Icons.Outlined.Schedule, contentDescription = null, tint = tripAccent, modifier = Modifier.size(18.dp))
+                                                    Text("Durata (Ore)", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colors.textPrimary)
+                                                }
+                                                Text("${viewModel.tripDurationHours} h", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = tripAccent)
+                                            }
+                                        }
+                                    } else {
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            // Selettore Giorno di Ritorno
+                                            Surface(
+                                                shape = RoundedCornerShape(14.dp),
+                                                color = colors.dialogBackground,
+                                                border = BorderStroke(0.5.dp, colors.cardBorder),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { showTripDatePicker = true }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                    ) {
+                                                        Icon(Icons.Outlined.CalendarToday, contentDescription = null, tint = tripAccent, modifier = Modifier.size(18.dp))
+                                                        Text("Giorno di Ritorno", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colors.textPrimary)
+                                                    }
+                                                    Text(viewModel.tripExactDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = tripAccent)
+                                                }
+                                            }
+
+                                            // Selettore Ora di Ritorno con wheel picker a scorrimento
+                                            Surface(
+                                                shape = RoundedCornerShape(14.dp),
+                                                color = colors.dialogBackground,
+                                                border = BorderStroke(0.5.dp, colors.cardBorder),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { showTripTimeWheelPicker = true }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                    ) {
+                                                        Icon(Icons.Outlined.Schedule, contentDescription = null, tint = tripAccent, modifier = Modifier.size(18.dp))
+                                                        Text("Ora di Ritorno", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colors.textPrimary)
+                                                    }
+                                                    Text(
+                                                        text = String.format(Locale.ROOT, "%02d:%02d", viewModel.tripExactHour, viewModel.tripExactMinute),
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = tripAccent
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Imposta Durata Viaggio", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-                        Text("Al termine del viaggio i capi seguiranno la regola scelta sotto", fontSize = 11.sp, color = colors.textSecondary)
-                    }
-                    Switch(
-                        checked = viewModel.tripDurationEnabled,
-                        onCheckedChange = { viewModel.tripDurationEnabled = it },
-                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = tripAccent)
-                    )
-                }
-
-                if (viewModel.tripDurationEnabled) {
-                    Surface(
-                        shape = RoundedCornerShape(18.dp),
-                        color = colors.surfaceSecondary,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = { viewModel.tripUseExactEndTime = false },
-                                    colors = ButtonDefaults.buttonColors(containerColor = if (!viewModel.tripUseExactEndTime) tripAccent else Color.Transparent),
-                                    shape = CircleShape,
-                                    modifier = Modifier.weight(1f)
-                                ) { Text("Per Ore", fontSize = 11.sp, color = if (!viewModel.tripUseExactEndTime) Color.White else colors.textPrimary) }
-
-                                Button(
-                                    onClick = { viewModel.tripUseExactEndTime = true },
-                                    colors = ButtonDefaults.buttonColors(containerColor = if (viewModel.tripUseExactEndTime) tripAccent else Color.Transparent),
-                                    shape = CircleShape,
-                                    modifier = Modifier.weight(1f)
-                                ) { Text("Giorno e Ora di Fine", fontSize = 11.sp, color = if (viewModel.tripUseExactEndTime) Color.White else colors.textPrimary) }
-                            }
-
-                            if (!viewModel.tripUseExactEndTime) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                        Text("Azione al termine del viaggio:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TripEndAction.entries.forEach { action ->
+                                val isSel = viewModel.tripEndAction == action
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSel) tripAccent.copy(alpha = 0.12f) else colors.surfaceSecondary,
+                                    border = BorderStroke(1.dp, if (isSel) tripAccent else colors.cardBorder),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { viewModel.tripEndAction = action }
                                 ) {
-                                    Text("Durata (Ore):", fontSize = 13.sp, color = colors.textPrimary)
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        IconButton(onClick = { if (viewModel.tripDurationHours > 1) viewModel.tripDurationHours -= 6 }) { Text("-", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary) }
-                                        Text("${viewModel.tripDurationHours} h", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = tripAccent)
-                                        IconButton(onClick = { viewModel.tripDurationHours += 6 }) { Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary) }
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isSel) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
+                                            contentDescription = null,
+                                            tint = if (isSel) tripAccent else colors.textSecondary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(action.label, fontSize = 13.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium, color = colors.textPrimary)
                                     }
                                 }
-                            } else {
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                            }
+                        }
+
+                        if (viewModel.tripEndAction == TripEndAction.GO_TO_CLOSET) {
+                            var showClosetMenu by remember { mutableStateOf(false) }
+                            val currentTarget = viewModel.tripTargetCloset ?: closets.firstOrNull() ?: "Armadio Principale"
+
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = colors.surfaceSecondary,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { showClosetMenu = true }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Armadio di destinazione: $currentTarget", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = tripAccent)
+                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = colors.textSecondary)
+                                    }
+                                }
+                                DropdownMenu(expanded = showClosetMenu, onDismissRequest = { showClosetMenu = false }) {
+                                    closets.forEach { cl ->
+                                        DropdownMenuItem(
+                                            text = { Text(cl, color = colors.textPrimary) },
+                                            onClick = {
+                                                viewModel.tripTargetCloset = cl
+                                                showClosetMenu = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (viewModel.tripEndAction == TripEndAction.GO_TO_LAUNDRY) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = colors.surfaceSecondary,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Opzioni Panni preconfigurate:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = tripAccent)
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = colors.dialogBackground,
+                                        border = BorderStroke(0.5.dp, colors.cardBorder),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { showTripLaundryDurationWheelPicker = true }
                                     ) {
-                                        Text("Giorno di rientro:", fontSize = 13.sp, color = colors.textPrimary)
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            IconButton(onClick = { viewModel.tripExactDate = viewModel.tripExactDate.minusDays(1) }) { Text("-", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary) }
-                                            Text(viewModel.tripExactDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = tripAccent)
-                                            IconButton(onClick = { viewModel.tripExactDate = viewModel.tripExactDate.plusDays(1) }) { Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary) }
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                Icon(Icons.Outlined.Schedule, contentDescription = null, tint = tripAccent, modifier = Modifier.size(16.dp))
+                                                Text("Durata lavaggio", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colors.textPrimary)
+                                            }
+                                            Text("${viewModel.tripLaundryDurationHours} h", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = tripAccent)
                                         }
                                     }
                                 }
                             }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = { showCustomizeSheet = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = tripAccent),
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(46.dp)
+                    ) { Text("Salva impostazioni", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
                 }
-
-                HorizontalDivider(color = colors.cardBorder)
-
-                Text("A fine viaggio:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TripEndAction.entries.forEach { action ->
-                        val isSel = (viewModel.tripEndAction == action)
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (isSel) tripAccent.copy(alpha = 0.2f) else colors.surfaceSecondary,
-                            border = BorderStroke(1.dp, if (isSel) tripAccent else Color.Transparent),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { viewModel.tripEndAction = action }
-                        ) {
-                            Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Icon(
-                                    imageVector = if (isSel) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                    contentDescription = null,
-                                    tint = if (isSel) tripAccent else colors.textSecondary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(action.label, fontSize = 13.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium, color = colors.textPrimary)
-                            }
-                        }
-                    }
-                }
-
-                if (viewModel.tripEndAction == TripEndAction.GO_TO_CLOSET) {
-                    var showClosetMenu by remember { mutableStateOf(false) }
-                    val currentTarget = viewModel.tripTargetCloset ?: closets.firstOrNull() ?: "Armadio Principale"
-
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = colors.surfaceSecondary,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showClosetMenu = true }
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Armadio di destinazione: $currentTarget", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = tripAccent)
-                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = colors.textSecondary)
-                            }
-                        }
-                        DropdownMenu(expanded = showClosetMenu, onDismissRequest = { showClosetMenu = false }) {
-                            closets.forEach { cl ->
-                                DropdownMenuItem(
-                                    text = { Text(cl, color = colors.textPrimary) },
-                                    onClick = {
-                                        viewModel.tripTargetCloset = cl
-                                        showClosetMenu = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                if (viewModel.tripEndAction == TripEndAction.GO_TO_LAUNDRY) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = colors.surfaceSecondary,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Opzioni Panni preconfigurate:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = tripAccent)
-                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Durata lavaggio:", fontSize = 12.sp, color = colors.textPrimary)
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = { if (viewModel.tripLaundryDurationHours > 1) viewModel.tripLaundryDurationHours-- }) { Text("-", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary) }
-                                    Text("${viewModel.tripLaundryDurationHours}h", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = tripAccent)
-                                    IconButton(onClick = { viewModel.tripLaundryDurationHours++ }) { Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary) }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Button(
-                    onClick = { showCustomizeSheet = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = tripAccent),
-                    shape = CircleShape,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
-                ) { Text("Salva impostazioni", color = Color.White, fontWeight = FontWeight.Bold) }
             }
         }
     }
-}
-}
+
+    if (showTripDurationWheelPicker) {
+        SamsungTimeWheelPickerDialog(
+            initialTime = LocalTime.of(viewModel.tripDurationHours.coerceIn(1, 23), 0),
+            title = "Imposta durata (Ore)",
+            onDismiss = { showTripDurationWheelPicker = false },
+            onConfirm = { time ->
+                viewModel.tripDurationHours = time.hour.coerceAtLeast(1)
+                showTripDurationWheelPicker = false
+            }
+        )
+    }
+
+    if (showTripTimeWheelPicker) {
+        SamsungTimeWheelPickerDialog(
+            initialTime = LocalTime.of(viewModel.tripExactHour.coerceIn(0, 23), viewModel.tripExactMinute.coerceIn(0, 59)),
+            title = "Imposta orario",
+            onDismiss = { showTripTimeWheelPicker = false },
+            onConfirm = { time ->
+                viewModel.tripExactHour = time.hour
+                viewModel.tripExactMinute = time.minute
+                showTripTimeWheelPicker = false
+            }
+        )
+    }
+
+    if (showTripDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = viewModel.tripExactDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showTripDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        viewModel.tripExactDate = Instant.ofEpochMilli(millis)
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalDate()
+                    }
+                    showTripDatePicker = false
+                }) { Text("OK", color = tripAccent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTripDatePicker = false }) { Text("Annulla", color = colors.textSecondary) }
+            },
+            colors = DatePickerDefaults.colors(containerColor = colors.dialogBackground)
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    if (showTripLaundryDurationWheelPicker) {
+        SamsungTimeWheelPickerDialog(
+            initialTime = LocalTime.of(viewModel.tripLaundryDurationHours.coerceIn(1, 23), 0),
+            title = "Durata lavaggio (Ore)",
+            onDismiss = { showTripLaundryDurationWheelPicker = false },
+            onConfirm = { time ->
+                viewModel.tripLaundryDurationHours = time.hour.coerceAtLeast(1)
+                showTripLaundryDurationWheelPicker = false
+            }
+        )
+    }
 }
